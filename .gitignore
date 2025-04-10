@@ -1,3 +1,5 @@
 # Ignore all the videos captured 
 *.mp4
 
+# Ignore all the pictures in the frame directory 
+frames/*
