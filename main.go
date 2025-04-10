@@ -99,6 +99,9 @@ func main() {
 	}
 }
 
+// TODO: Need to increase the frame rate of the capturing
+
+// 2 possible implementations, feeding the frames straight into the video encoding pipeline
 func startRecording(stopChan chan struct{}) (int, int) {
 	// Create directory for frames
 	os.Mkdir("frames", 0755)
@@ -117,6 +120,9 @@ func startRecording(stopChan chan struct{}) (int, int) {
 
 	fmt.Printf("Recording screen at target %d FPS ... Press Ctrl+C to stop", targetFPS)
 
+	encoder := png.Encoder{
+		CompressionLevel: png.BestSpeed,
+	}
 	for {
 		select {
 		case <-ticker.C:
@@ -130,8 +136,15 @@ func startRecording(stopChan chan struct{}) (int, int) {
 			// Save frame
 			fileName := fmt.Sprintf("frames/frame_%05d.png", frameCount)
 			file, _ := os.Create(fileName)
-			png.Encode(file, img)
-			file.Close()
+
+			// jpeg.Encode(file, img, &jpeg.Options{100})
+
+			err = encoder.Encode(file, img)
+			defer file.Close()
+
+			if err != nil {
+				fmt.Printf("Error encoding frame %d %v\n", frameCount, err)
+			}
 
 			frameCount++
 		case <-stopChan:
