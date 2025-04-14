@@ -96,7 +96,7 @@ func main() {
 
 func startRecording(stopChan chan struct{}) int {
 	outputFile := "recording.mp4"
-	targetFPS := 60
+	targetFPS := 30
 	var cmd *exec.Cmd
 
 	// Get the OS at runtime
@@ -121,9 +121,10 @@ func startRecording(stopChan chan struct{}) int {
 		cmd = exec.Command("ffmpeg",
 			"-f", "avfoundation",
 			"-framerate", fmt.Sprintf("%d", targetFPS),
-			"-i", "1", // Check device index with: ffmpeg -f avfoundation -list_devices true -i ""
-			"-c:v", "hevc_videotoolbox", // Or use "libx264" as an alternative
-			"-pix_fmt", "yuv420p",
+			"-i", "3:none", // Capture screen (may need to change index)
+			"-c:v", "libx264", // More compatible than hevc_videotoolbox
+			"-pix_fmt", "yuv420p", // Uncomment this for compatibility
+			"-preset", "ultrafast", // For better performance
 			"-y",
 			outputFile)
 	case "linux":
