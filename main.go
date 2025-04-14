@@ -2,17 +2,13 @@ package main
 
 import (
 	"fmt"
-	"image/png"
-	"io"
 	"log"
 	"os"
 	"os/exec"
 	"os/signal"
+	"runtime"
 	"sync"
 	"syscall"
-	"time"
-
-	"github.com/kbinani/screenshot"
 )
 
 func main() {
@@ -28,7 +24,7 @@ func main() {
 
 	go func() {
 		for sig := range sigChan {
-			fmt.Printf("\nRecieved signal: %v\n", sig)
+			fmt.Printf("\nReceived signal: %v\n", sig)
 
 			recordMutex.Lock()
 			if isRecording {
@@ -98,98 +94,103 @@ func main() {
 	}
 }
 
-// TODO: Need to increase the frame rate of the capturing
-
-// 2 possible implementations, feeding the frames straight into the video encoding pipeline
 func startRecording(stopChan chan struct{}) int {
-	// Select display to record
-	// TODO: Have to create a gui for the user to pick this in the future
-	displayIndex := 0
-	bounds := screenshot.GetDisplayBounds(displayIndex)
+	outputFile := "recording.mp4"
+	targetFPS := 60
+	var cmd *exec.Cmd
 
-	frameCount := 0
-	targetFPS := 30
-	ticker := time.NewTicker(time.Second / time.Duration(targetFPS)) // Controls the framerate of the recording
-	defer ticker.Stop()
+	// Get the OS at runtime
+	osType := runtime.GOOS // Use runtime.GOOS here
 
-	startTime := time.Now()
+	fmt.Printf("Detected OS: %s\n", osType)
 
-	fmt.Printf("Recording screen at target %d FPS ... Press Ctrl+C to stop", targetFPS)
+	// Use the detected OS in the switch statement
+	switch osType {
+	case "windows":
+		fmt.Println("Configuring for Windows...")
+		cmd = exec.Command("ffmpeg",
+			"-f", "gdigrab", // or "ddagrab"
+			"-framerate", fmt.Sprintf("%d", targetFPS),
+			"-i", "desktop",
+			"-c:v", "libx264", // Choose appropriate encoder
+			"-pix_fmt", "yuv420p",
+			"-y",
+			outputFile)
+	case "darwin": // macOS uses "darwin"
+		fmt.Println("Configuring for macOS (darwin)...")
+		cmd = exec.Command("ffmpeg",
+			"-f", "avfoundation",
+			"-framerate", fmt.Sprintf("%d", targetFPS),
+			"-i", "1", // Check device index with: ffmpeg -f avfoundation -list_devices true -i ""
+			"-c:v", "hevc_videotoolbox", // Or use "libx264" as an alternative
+			"-pix_fmt", "yuv420p",
+			"-y",
+			outputFile)
+	case "linux":
+		fmt.Println("Configuring for Linux...")
+		cmd = exec.Command("ffmpeg",
+			"-f", "x11grab", // May need PipeWire setup for Wayland: -f pipewire
+			"-framerate", fmt.Sprintf("%d", targetFPS),
+			"-i", ":0.0", // Or os.Getenv("DISPLAY")
+			"-c:v", "libx264",
+			"-pix_fmt", "yuv420p",
+			"-y",
+			outputFile)
+	default:
+		fmt.Printf("Unsupported operating system: %s\n", osType)
+		return 0 // Indicate failure or unhandled OS
+	}
 
-	// Create a pipe to send the images to ffmpeg
-	r, w := io.Pipe()
+	stdinPipe, err := cmd.StdinPipe()
+	if err != nil {
+		log.Printf("Failed to get stdin pipe: %v", err)
+		return 0
+	}
+	defer stdinPipe.Close()
 
-	// Set up ffmpeg command
-	cmd := exec.Command("ffmpeg",
-		"-y",                                       // Overwrite output file without asking
-		"-framerate", fmt.Sprintf("%d", targetFPS), // Input framerate hint (essential for piped input)
-		"-f", "image2pipe", // Input format (piped images)
-		"-i", "-", // Input source (stdin/pipe)
-		"-c:v", "hevc_videotoolbox", // USE HARDWARE HEVC ENCODER on Apple Silicon [1][4][5]
-		"-tag:v", "hvc1", // Apple compatibility tag [1]
-		// Quality/Bitrate: VideoToolbox often ignores -crf and -preset [2].
-		// Let VideoToolbox manage quality/bitrate initially for speed.
-		// If needed, experiment with "-b:v <bitrate>" (e.g., "-b:v", "15M" for 15 Mbps).
-		"-pix_fmt", "yuv420p", // Standard pixel format for broad compatibility
-		"output.mp4", // Output file name
-	)
 	cmd.Stderr = os.Stderr
 
-	// Set the pipe as the input to the ffmpeg command
-	cmd.Stdin = r
-
-	// Start ffmpeg command
-	err := cmd.Start()
+	fmt.Println("Starting FFmpeg...")
+	err = cmd.Start()
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("Failed to start ffmpeg: %v", err) // Log instead of Fatal
 		return 0
 	}
 
-	// Function to encode and send frames to ffmpeg
+	// Goroutine to wait for stop signal
 	go func() {
-		encoder := png.Encoder{
-			CompressionLevel: png.BestSpeed,
-		}
-		for {
-			select {
-			case <-ticker.C:
-				// Capture screenshot
-				img, err := screenshot.CaptureRect(bounds)
-				if err != nil {
-					fmt.Println("Error capturing:", err)
-					continue
-				}
+		<-stopChan
+		fmt.Println("Signaling FFmpeg to stop...")
 
-				// Encode frame to the pipe
-				err = encoder.Encode(w, img)
-				if err != nil {
-					fmt.Printf("Error encoding frame %d: %v\n", frameCount, err)
-					return // Exit goroutine if encoding fails
-				}
-
-				frameCount++
-			case <-stopChan:
-				fmt.Println("Stopping...")
-				// Close the writer to signal to ffmpeg that no more data is coming
-				if err := w.Close(); err != nil {
-					fmt.Println("Error closing pipe:", err)
-				}
-				return // Exit goroutine
-			}
+		_, err := stdinPipe.Write([]byte("q\n"))
+		if err != nil {
+			fmt.Printf("Failed to write 'q' to the ffmpeg stdin: %v\n", err)
 		}
+		stdinPipe.Close()
 	}()
+
 	// Wait for ffmpeg to finish
+	fmt.Println("Waiting for FFmpeg to exit...")
 	err = cmd.Wait()
+
+	// Check the exit error after waiting
 	if err != nil {
-		log.Fatal(err)
+		// Log non-zero exit status, but don't necessarily treat as fatal
+		// FFmpeg often exits with status 255 or similar on SIGINT, which is expected
+		log.Printf("FFmpeg process finished. Exit status: %v\n", err)
+	} else {
+		fmt.Println("FFmpeg process finished successfully.")
 	}
-	duration := time.Since(startTime).Abs().Seconds()
-	actualFPS := int(float64(frameCount) / duration)
 
-	fmt.Printf("Recording stopped. Captured %d frames in %.2f seconds.\n", frameCount, duration)
-	fmt.Printf("Actual average FPS: %d\n", actualFPS)
-
-	return actualFPS
+	// Since ffmpeg controls FPS, return target or indicate success/failure differently
+	// Returning targetFPS is a placeholder.
+	if err == nil || err.Error() == "signal: interrupt" || err.Error() == "exit status 255" {
+		fmt.Println("Recording likely completed.")
+		return targetFPS // Or maybe return 1 for success, 0 for failure
+	} else {
+		fmt.Println("Recording may have failed.")
+		return 0 // Indicate failure
+	}
 }
 
 func encodeVideo(output string, frameRate int) error {
