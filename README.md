@@ -8,6 +8,6 @@ Able to take screen recordings through taking multiple screenshots per second an
 
 Now we've switched over to using ffmpeg to capture the screen and encode the captured video and getting higher frame rate.
 
-#### Current Status
+### Current Status
 
-Working on mouse tracking and interactions for video transitions and editing
+Working on finding a way to track the mouse to be able to add high quality zoom animations when the mouse is clicked.

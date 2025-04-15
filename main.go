@@ -1,12 +1,15 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os"
 	"os/exec"
 	"os/signal"
 	"runtime"
+	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 )
@@ -96,7 +99,7 @@ func main() {
 
 func startRecording(stopChan chan struct{}) int {
 	outputFile := "recording.mp4"
-	targetFPS := 30
+	targetFPS := 60
 	var cmd *exec.Cmd
 
 	// Get the OS at runtime
@@ -118,10 +121,16 @@ func startRecording(stopChan chan struct{}) int {
 			outputFile)
 	case "darwin": // macOS uses "darwin"
 		fmt.Println("Configuring for macOS (darwin)...")
+
+		index, err := findScreenDeviceIndex()
+		if err != nil {
+			fmt.Println("Unable to capture the correct device screen")
+		}
 		cmd = exec.Command("ffmpeg",
 			"-f", "avfoundation",
 			"-framerate", fmt.Sprintf("%d", targetFPS),
-			"-i", "3:none", // Capture screen (may need to change index)
+			// "-pixel_format", "bgr0",
+			"-i", index+":none", // Capture screen (Need to update the index with the command ffmpeg -f avfoundation -list_devices true -i "")
 			"-c:v", "libx264", // More compatible than hevc_videotoolbox
 			"-pix_fmt", "yuv420p", // Uncomment this for compatibility
 			"-preset", "ultrafast", // For better performance
@@ -196,4 +205,48 @@ func startRecording(stopChan chan struct{}) int {
 
 func encodeVideo(output string, frameRate int) error {
 	return nil
+}
+
+func findScreenDeviceIndex() (string, error) {
+	cmd := exec.Command("ffmpeg", "-f", "avfoundation", "-list_devices", "true", "-i", "")
+
+	// Capture ouput
+	outputBytes, err := cmd.CombinedOutput()
+	if err != nil {
+		if len(outputBytes) == 0 {
+			return "", fmt.Errorf("failed to run ffmpeg list_devices command: %v, ouput: %s", err, outputBytes)
+		}
+
+		fmt.Println("Ffmpeg list_devices exited non-zero, but produced output. Proceeding with parsing.")
+	}
+
+	output := string(outputBytes)
+	lines := strings.Split(output, "\n")
+
+	inVideoDevices := false
+	videoDeviceIndex := 0
+	for _, line := range lines {
+		if strings.Contains(line, "AVFoundation video devices:") {
+			inVideoDevices = true
+			continue
+		}
+		if strings.Contains(line, "AVFoundation audio devices:") {
+			inVideoDevices = false
+			break
+		}
+
+		if inVideoDevices {
+
+			trimmedLine := strings.TrimSpace(line)
+			if strings.Contains(trimmedLine, "Capture screen 0") {
+				return strconv.Itoa(videoDeviceIndex), nil
+			}
+
+			if strings.Contains(trimmedLine, "]") && len(trimmedLine) > 0 {
+				videoDeviceIndex++
+			}
+		}
+	}
+
+	return "", errors.New("could not find 'Capture SCreen 0' in ffmpeg device list")
 }
