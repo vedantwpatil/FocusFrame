@@ -68,18 +68,7 @@ func main() {
 
 			fmt.Println("Starting screen recording... Press Ctrl+C to stop recording.")
 
-			go func() {
-				actualFPS := startRecording(stopChan)
-				outputFile := "recording.mp4"
-
-				// Use the actual FPS for encoding
-				err := encodeVideo(outputFile, actualFPS)
-				if err != nil {
-					fmt.Printf("Error creating video: %v\n", err)
-				} else {
-					fmt.Println("Screen recording completed successfully")
-				}
-			}()
+			go startRecording(stopChan)
 
 		case 2:
 			recordMutex.Lock()
@@ -103,7 +92,7 @@ func startRecording(stopChan chan struct{}) int {
 	var cmd *exec.Cmd
 
 	// Get the OS at runtime
-	osType := runtime.GOOS // Use runtime.GOOS here
+	osType := runtime.GOOS
 
 	fmt.Printf("Detected OS: %s\n", osType)
 
@@ -203,10 +192,6 @@ func startRecording(stopChan chan struct{}) int {
 	}
 }
 
-func encodeVideo(output string, frameRate int) error {
-	return nil
-}
-
 func findScreenDeviceIndex() (string, error) {
 	cmd := exec.Command("ffmpeg", "-f", "avfoundation", "-list_devices", "true", "-i", "")
 
@@ -223,6 +208,7 @@ func findScreenDeviceIndex() (string, error) {
 	output := string(outputBytes)
 	lines := strings.Split(output, "\n")
 
+	// Get proper video device index
 	inVideoDevices := false
 	videoDeviceIndex := 0
 	for _, line := range lines {
@@ -230,6 +216,7 @@ func findScreenDeviceIndex() (string, error) {
 			inVideoDevices = true
 			continue
 		}
+		// Disregard the audio device
 		if strings.Contains(line, "AVFoundation audio devices:") {
 			inVideoDevices = false
 			break
@@ -237,6 +224,7 @@ func findScreenDeviceIndex() (string, error) {
 
 		if inVideoDevices {
 
+			// Format output
 			trimmedLine := strings.TrimSpace(line)
 			if strings.Contains(trimmedLine, "Capture screen 0") {
 				return strconv.Itoa(videoDeviceIndex), nil
@@ -248,5 +236,5 @@ func findScreenDeviceIndex() (string, error) {
 		}
 	}
 
-	return "", errors.New("could not find 'Capture SCreen 0' in ffmpeg device list")
+	return "", errors.New("could not find 'Capture screen 0' in ffmpeg device list")
 }
