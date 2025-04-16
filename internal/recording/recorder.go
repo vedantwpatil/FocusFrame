@@ -1,4 +1,4 @@
-package main
+package recording
 
 import (
 	"errors"
@@ -6,87 +6,13 @@ import (
 	"log"
 	"os"
 	"os/exec"
-	"os/signal"
 	"runtime"
 	"strconv"
 	"strings"
-	"sync"
-	"syscall"
 )
 
-func main() {
-	// Recording state variables
-	var (
-		isRecording = false
-		recordMutex = &sync.Mutex{}
-		stopChan    = make(chan struct{})
-	)
-
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
-	go func() {
-		for sig := range sigChan {
-			fmt.Printf("\nReceived signal: %v\n", sig)
-
-			recordMutex.Lock()
-			if isRecording {
-				// If we're recording stop recording but don't kill the program
-				fmt.Println("Stopped screen recording...")
-				close(stopChan)
-				isRecording = false
-			} else {
-				// If we're not recording then we should stop the program
-				fmt.Println("Exiting application...")
-				recordMutex.Unlock()
-				os.Exit(0)
-			}
-			recordMutex.Unlock()
-		}
-	}()
-	for {
-		fmt.Println("\nCommands:")
-		fmt.Println("1. Start recording")
-		fmt.Println("2. Exit")
-		fmt.Print("Choose an option: ")
-
-		var choice int
-		fmt.Scanln(&choice)
-
-		switch choice {
-		case 1:
-			recordMutex.Lock()
-			if isRecording {
-				fmt.Println("Already recording")
-				recordMutex.Unlock()
-				continue
-			}
-
-			stopChan = make(chan struct{})
-			isRecording = true
-			recordMutex.Unlock()
-
-			fmt.Println("Starting screen recording... Press Ctrl+C to stop recording.")
-
-			go startRecording(stopChan)
-
-		case 2:
-			recordMutex.Lock()
-			if isRecording {
-				close(stopChan)
-			}
-
-			recordMutex.Unlock()
-			fmt.Println("Exiting...")
-			return
-
-		default:
-			fmt.Println("Invalid option")
-		}
-	}
-}
-
-func startRecording(stopChan chan struct{}) int {
+// Starts recording the user's main screen using ffmpeg to capture the screen and to also encode the video
+func StartRecording(stopChan chan struct{}) int {
 	outputFile := "recording.mp4"
 	targetFPS := 60
 	var cmd *exec.Cmd
@@ -185,7 +111,7 @@ func startRecording(stopChan chan struct{}) int {
 	// Returning targetFPS is a placeholder.
 	if err == nil || err.Error() == "signal: interrupt" || err.Error() == "exit status 255" {
 		fmt.Println("Recording likely completed.")
-		return targetFPS // Or maybe return 1 for success, 0 for failure
+		return 1 // Or maybe return 1 for success, 0 for failure
 	} else {
 		fmt.Println("Recording may have failed.")
 		return 0 // Indicate failure
@@ -227,6 +153,7 @@ func findScreenDeviceIndex() (string, error) {
 			// Format output
 			trimmedLine := strings.TrimSpace(line)
 			if strings.Contains(trimmedLine, "Capture screen 0") {
+				fmt.Println("Located main device screen")
 				return strconv.Itoa(videoDeviceIndex), nil
 			}
 

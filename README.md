@@ -1,4 +1,4 @@
-# Screen Capture
+# Focus Frame
 
 This program captures screen recording and will be able to add high quality smooth zoom animations on click as well as record high quality video.
 
@@ -10,6 +10,8 @@ Now we've switched over to using ffmpeg to capture the screen and encode the cap
 
 Optimized screen recording in ffmpeg to automatically detect and record primary screen on macos.
 
+Need to restructure the project since all the logic is currently in the main.go file
+
 ### Current Status
 
 Working on finding a way to track the mouse to be able to add high quality zoom animations when the mouse is clicked.
@@ -17,5 +19,6 @@ Working on finding a way to track the mouse to be able to add high quality zoom 
 ### Potential Features
 
 - Adding audio to the screen recording
+- Adding webcam for camera feedback
 - Adding GUI for user to choose screens and capture area
 - Adding editing interface for user to edit the captured video and audio
