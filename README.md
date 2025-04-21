@@ -22,3 +22,7 @@ Working on finding a way to track the mouse to be able to add high quality zoom 
 - Adding webcam for camera feedback
 - Adding GUI for user to choose screens and capture area
 - Adding editing interface for user to edit the captured video and audio
+
+## Hardware
+
+The software was written on macOS utilizing the m3 max chip so the frame rate and video encoding speeds may vary

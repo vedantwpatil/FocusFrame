@@ -9,6 +9,7 @@ import (
 
 // Captures the mouse position and times when the mouse is clicked
 func StartMouseTracking(x *[]int16, y *[]int16, timesClicked *[]time.Duration, startingTime time.Time) {
+	// TODO: Verify that this function works
 	hook.Register(hook.MouseDown, []string{}, func(e hook.Event) {
 		if e.Button == hook.MouseMap["left"] || e.Button == 1 {
 			currentTime := time.Now()

@@ -12,9 +12,9 @@ import (
 )
 
 // Starts recording the user's main screen using ffmpeg to capture the screen and to also encode the video
-func StartRecording(stopChan chan struct{}) int {
-	outputFile := "recording.mp4"
-	targetFPS := 60
+func StartRecording(outputFile string, stopChan, recordingDone chan struct{}, targetFPS int) {
+	defer close(recordingDone)
+
 	var cmd *exec.Cmd
 
 	// Get the OS at runtime
@@ -62,14 +62,12 @@ func StartRecording(stopChan chan struct{}) int {
 			"-y",
 			outputFile)
 	default:
-		fmt.Printf("Unsupported operating system: %s\n", osType)
-		return 0 // Indicate failure or unhandled OS
+		log.Fatalf("Unsupported operating system: %s\n", osType)
 	}
 
 	stdinPipe, err := cmd.StdinPipe()
 	if err != nil {
-		log.Printf("Failed to get stdin pipe: %v", err)
-		return 0
+		log.Fatalf("Failed to get stdin pipe: %v", err)
 	}
 	defer stdinPipe.Close()
 
@@ -78,8 +76,7 @@ func StartRecording(stopChan chan struct{}) int {
 	fmt.Println("Starting FFmpeg...")
 	err = cmd.Start()
 	if err != nil {
-		log.Printf("Failed to start ffmpeg: %v", err) // Log instead of Fatal
-		return 0
+		log.Fatalf("Failed to start ffmpeg: %v", err) // Log instead of Fatal
 	}
 
 	// Goroutine to wait for stop signal
@@ -108,24 +105,22 @@ func StartRecording(stopChan chan struct{}) int {
 	}
 
 	// Since ffmpeg controls FPS, return target or indicate success/failure differently
-	// Returning targetFPS is a placeholder.
 	if err == nil || err.Error() == "signal: interrupt" || err.Error() == "exit status 255" {
 		fmt.Println("Recording likely completed.")
-		return 1 // Or maybe return 1 for success, 0 for failure
+		return
 	} else {
-		fmt.Println("Recording may have failed.")
-		return 0 // Indicate failure
+		log.Fatal("Recording may have failed.")
 	}
 }
 
 func findScreenDeviceIndex() (string, error) {
 	cmd := exec.Command("ffmpeg", "-f", "avfoundation", "-list_devices", "true", "-i", "")
 
-	// Capture ouput
+	// Capture output
 	outputBytes, err := cmd.CombinedOutput()
 	if err != nil {
 		if len(outputBytes) == 0 {
-			return "", fmt.Errorf("failed to run ffmpeg list_devices command: %v, ouput: %s", err, outputBytes)
+			return "", fmt.Errorf("failed to run ffmpeg list_devices command: %v, output: %s", err, outputBytes)
 		}
 
 		fmt.Println("Ffmpeg list_devices exited non-zero, but produced output. Proceeding with parsing.")
