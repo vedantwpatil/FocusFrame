@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/signal"
@@ -14,6 +15,7 @@ import (
 	"github.com/vedantwpatil/Screen-Capture/internal/tracking"
 )
 
+// TODO: Need to manage channels using context instead of sending signals
 func main() {
 	// Recording state variables
 	var (
@@ -30,6 +32,7 @@ func main() {
 		mouseClickTimes []time.Duration
 		recordingDone   = make(chan struct{})
 	)
+	ctx, cancel := context.WithCancel(context.Background())
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
@@ -75,7 +78,7 @@ func main() {
 				continue
 			}
 
-			recordingDone = make(chan struct{}) // Reinitialize the channel
+			recordingDone = make(chan struct{})
 			stopChan = make(chan struct{})
 			isRecording = true
 			recordMutex.Unlock()
@@ -84,16 +87,14 @@ func main() {
 			fmt.Print("Enter the name you wish to save the file under (Don't include the file format ex .mp4): ")
 			fmt.Scanln(&baseName)
 			outputFilePath = baseName + ".mp4"
-			// editedOutputFilePath = baseName + "-edited.mp4"
 			fmt.Printf("Output file: %s\n", outputFilePath)
-			// fmt.Printf("Edited output file: %s\n", editedOutputFilePath)
 
 			fmt.Println("Starting screen recording... Press Ctrl+C to stop recording.")
 			go recording.StartRecording(outputFilePath, stopChan, recordingDone, targetFPS)
 			timeStarted := time.Now()
 
 			fmt.Println("Starting mouse tracking...")
-			go tracking.StartMouseTracking(&mouseLocationsX, &mouseLocationsY, &mouseClickTimes, timeStarted)
+			go tracking.StartMouseTracking(&mouseLocationsX, &mouseLocationsY, &mouseClickTimes, timeStarted, ctx)
 
 		case 2:
 			// Wait for recording to be done
@@ -109,9 +110,11 @@ func main() {
 			recordMutex.Lock()
 			if isRecording {
 				close(stopChan)
+				cancel()
 			}
 			recordMutex.Unlock()
 			fmt.Println("Exiting application...")
+
 			os.Exit(0)
 
 		default:
