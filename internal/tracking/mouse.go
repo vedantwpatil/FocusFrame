@@ -10,9 +10,10 @@ import (
 )
 
 // Captures the mouse position and times when the mouse is clicked
-func StartMouseTracking(x *[]int16, y *[]int16, timesClicked *[]time.Duration, startingTime time.Time, ctx context.Context) {
+func StartMouseTracking(mouseEvents *[]CursorPosition, startingTime time.Time, targetFPS int, ctx context.Context) {
 	// Register location
 	go func() {
+		mousePos := CursorPosition{}
 		for {
 			select {
 
@@ -22,10 +23,13 @@ func StartMouseTracking(x *[]int16, y *[]int16, timesClicked *[]time.Duration, s
 			default:
 				xMouse, yMouse := robotgo.Location()
 
-				*x = append(*x, int16(xMouse))
-				*y = append(*y, int16(yMouse))
-				// To avoid high/wasted cpu usage
-				time.Sleep(10 * time.Millisecond)
+				mousePos.X = int16(xMouse)
+				mousePos.Y = int16(yMouse)
+				mousePos.ClickTimeStamp = -1
+
+				*mouseEvents = append(*mouseEvents, mousePos)
+				// To capture mouse location only at every frame
+				time.Sleep(1 * time.Second / time.Duration(targetFPS))
 			}
 		}
 	}()
@@ -33,11 +37,16 @@ func StartMouseTracking(x *[]int16, y *[]int16, timesClicked *[]time.Duration, s
 	// Register click times
 	hook.Register(hook.MouseDown, []string{}, func(e hook.Event) {
 		if e.Button == hook.MouseMap["left"] || e.Button == 1 {
+
 			currentTime := time.Now()
 			elapsedTime := currentTime.Sub(startingTime)
 
-			*timesClicked = append(*timesClicked, elapsedTime)
-
+			clickEvent := CursorPosition{
+				X:              e.X,
+				Y:              e.Y,
+				ClickTimeStamp: elapsedTime,
+			}
+			*mouseEvents = append(*mouseEvents, clickEvent)
 		}
 	})
 

@@ -27,10 +27,8 @@ func main() {
 		editedOutputFilePath string
 		baseName             string
 
-		mouseLocationsX []int16
-		mouseLocationsY []int16
-		mouseClickTimes []time.Duration
-		recordingDone   = make(chan struct{})
+		cursorHistory []tracking.CursorPosition
+		recordingDone = make(chan struct{})
 	)
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -94,7 +92,7 @@ func main() {
 			timeStarted := time.Now()
 
 			fmt.Println("Starting mouse tracking...")
-			go tracking.StartMouseTracking(&mouseLocationsX, &mouseLocationsY, &mouseClickTimes, timeStarted, ctx)
+			go tracking.StartMouseTracking(&cursorHistory, timeStarted, targetFPS, ctx)
 
 		case 2:
 			// Wait for recording to be done
@@ -103,7 +101,7 @@ func main() {
 			hook.End()
 
 			fmt.Println("Starting video editing...")
-			editing.EditVideoFile(outputFilePath, editedOutputFilePath, mouseLocationsX, mouseLocationsY, mouseClickTimes, float64(targetFPS))
+			editing.EditVideoFile(outputFilePath, editedOutputFilePath, cursorHistory, float64(targetFPS))
 			fmt.Println("Video editing complete.")
 
 		case 3:
@@ -114,6 +112,12 @@ func main() {
 			}
 			recordMutex.Unlock()
 			fmt.Println("Exiting application...")
+
+			// Print mouse locations for debugging
+			fmt.Println("Cursor history details:")
+			for i, pos := range cursorHistory {
+				fmt.Printf("  Event %d: X=%d, Y=%d, Timestamp=%v\n", i, pos.X, pos.Y, pos.ClickTimeStamp)
+			}
 
 			os.Exit(0)
 
