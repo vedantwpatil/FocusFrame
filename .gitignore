@@ -1,6 +1,9 @@
 # Ignore all the videos captured 
 *.mp4
 
+# Ignore the csv files which capture the mouse data 
+*.csv
+
 # Ignore macos 
 *.DS_Store
 

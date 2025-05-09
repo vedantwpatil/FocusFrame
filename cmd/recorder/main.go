@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"encoding/csv"
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"sync"
@@ -19,6 +21,7 @@ import (
 func main() {
 	// Recording state variables
 	var (
+		// File and video variables
 		targetFPS            = 60
 		isRecording          = false
 		recordMutex          = &sync.Mutex{}
@@ -27,13 +30,34 @@ func main() {
 		editedOutputFilePath string
 		baseName             string
 
+		// Time tracking
+		timeStarted   time.Time
 		cursorHistory []tracking.CursorPosition
 		recordingDone = make(chan struct{})
+
+		// Csv writing
+		file   *os.File
+		writer *csv.Writer
 	)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+	// CSV file for mouse positions
+	file, err := os.Create("data.csv")
+	if err != nil {
+		log.Fatalf("Failed creating file: %s", err)
+	}
+	defer file.Close()
+
+	writer = csv.NewWriter(file)
+	defer writer.Flush()
+
+	header := []string{"Event", "X", "Y", "Timestamp"}
+	if err := writer.Write(header); err != nil {
+		log.Fatalf("Error writing header : %s", err)
+	}
 
 	go func() {
 		for sig := range sigChan {
@@ -52,10 +76,12 @@ func main() {
 				// If we're not recording then we should stop the program
 				fmt.Println("Exiting application...")
 				recordMutex.Unlock()
-				os.Exit(0)
+				cancel() // Cancel the context
+				return   // Exit the goroutine
 			}
 		}
 	}()
+
 	for {
 		fmt.Println("\nCommands:")
 		fmt.Println("1. Start recording")
@@ -89,7 +115,7 @@ func main() {
 
 			fmt.Println("Starting screen recording... Press Ctrl+C to stop recording.")
 			go recording.StartRecording(outputFilePath, stopChan, recordingDone, targetFPS)
-			timeStarted := time.Now()
+			timeStarted = time.Now()
 
 			fmt.Println("Starting mouse tracking...")
 			go tracking.StartMouseTracking(&cursorHistory, timeStarted, targetFPS, ctx)
@@ -105,20 +131,38 @@ func main() {
 			fmt.Println("Video editing complete.")
 
 		case 3:
+			fmt.Println("Exiting application...")
+			// Ensure everything is cleaned up before exiting
+
 			recordMutex.Lock()
 			if isRecording {
 				close(stopChan)
 				cancel()
 			}
 			recordMutex.Unlock()
-			fmt.Println("Exiting application...")
 
-			// Print mouse locations for debugging
-			fmt.Println("Cursor history details:")
+			// Convert cursorHistory data to [][]string format
+			records := [][]string{}
 			for i, pos := range cursorHistory {
-				fmt.Printf("  Event %d: X=%d, Y=%d, Timestamp=%v\n", i, pos.X, pos.Y, pos.ClickTimeStamp)
+				// Calculate the absolute time of the click event
+				actualClickEventTime := timeStarted.Add(pos.ClickTimeStamp)
+
+				record := []string{
+					fmt.Sprintf("%d", i),
+					fmt.Sprintf("%d", pos.X),
+					fmt.Sprintf("%d", pos.Y),
+					actualClickEventTime.Format(time.RFC3339),
+				}
+				records = append(records, record)
 			}
 
+			// Write all records at once
+			if err := writer.WriteAll(records); err != nil {
+				log.Fatalf("Error writing records: %s", err)
+			}
+
+			fmt.Printf("Mouse tracking data saved to data.csv (%d records)\n", len(records))
+			fmt.Println("Exiting application...")
 			os.Exit(0)
 
 		default:
