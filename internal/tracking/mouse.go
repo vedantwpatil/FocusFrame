@@ -11,7 +11,7 @@ import (
 
 // Captures the mouse position and times when the mouse is clicked
 func StartMouseTracking(mouseEvents *[]CursorPosition, startingTime time.Time, targetFPS int, ctx context.Context) {
-	// Register location
+	// Register mouse location
 	go func() {
 		mousePos := CursorPosition{}
 		for {
@@ -34,7 +34,7 @@ func StartMouseTracking(mouseEvents *[]CursorPosition, startingTime time.Time, t
 		}
 	}()
 
-	// Register click times
+	// Register mouse click times
 	hook.Register(hook.MouseDown, []string{}, func(e hook.Event) {
 		if e.Button == hook.MouseMap["left"] || e.Button == 1 {
 
@@ -50,7 +50,6 @@ func StartMouseTracking(mouseEvents *[]CursorPosition, startingTime time.Time, t
 		}
 	})
 
-	// Start the event hook listener
 	evChan := hook.Start()
 
 	fmt.Println("Hook process started. Waiting for events...")

@@ -9,3 +9,6 @@
 
 # Ignore all the pictures in the frame directory 
 frames/*
+
+# Ignore rust build artifacts
+**/target/

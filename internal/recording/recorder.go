@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-// Starts recording the user's main screen using ffmpeg to capture the screen and to also encode the video
+// Starts recording the user's main screen using ffmpeg to capture the screen and to also encode the video without the mouse
 func StartRecording(outputFile string, stopChan, recordingDone chan struct{}, targetFPS int) {
 	defer close(recordingDone)
 
@@ -22,7 +22,6 @@ func StartRecording(outputFile string, stopChan, recordingDone chan struct{}, ta
 
 	fmt.Printf("Detected OS: %s\n", osType)
 
-	// Use the detected OS in the switch statement
 	switch osType {
 	case "windows":
 		fmt.Println("Configuring for Windows...")
@@ -30,11 +29,11 @@ func StartRecording(outputFile string, stopChan, recordingDone chan struct{}, ta
 			"-f", "gdigrab", // or "ddagrab"
 			"-framerate", fmt.Sprintf("%d", targetFPS),
 			"-i", "desktop",
-			"-c:v", "libx264", // Choose appropriate encoder
+			"-c:v", "libx264",
 			"-pix_fmt", "yuv420p",
 			"-y",
 			outputFile)
-	case "darwin": // macOS uses "darwin"
+	case "darwin":
 		fmt.Println("Configuring for macOS (darwin)...")
 
 		index, err := findScreenDeviceIndex()
@@ -47,7 +46,7 @@ func StartRecording(outputFile string, stopChan, recordingDone chan struct{}, ta
 			// "-pixel_format", "bgr0",
 			"-i", index+":none", // Capture screen (Need to update the index with the command ffmpeg -f avfoundation -list_devices true -i "")
 			"-c:v", "libx264", // More compatible than hevc_videotoolbox
-			"-pix_fmt", "yuv420p", // Uncomment this for compatibility
+			"-pix_fmt", "yuv420p",
 			"-preset", "ultrafast", // For better performance
 			"-y",
 			outputFile)
@@ -76,7 +75,7 @@ func StartRecording(outputFile string, stopChan, recordingDone chan struct{}, ta
 	fmt.Println("Starting FFmpeg...")
 	err = cmd.Start()
 	if err != nil {
-		log.Fatalf("Failed to start ffmpeg: %v", err) // Log instead of Fatal
+		log.Fatalf("Failed to start ffmpeg: %v", err)
 	}
 
 	// Goroutine to wait for stop signal
@@ -91,7 +90,7 @@ func StartRecording(outputFile string, stopChan, recordingDone chan struct{}, ta
 		stdinPipe.Close()
 	}()
 
-	// Wait for ffmpeg to finish
+	// Need to wait until ffmpeg is finished
 	fmt.Println("Waiting for FFmpeg to exit...")
 	err = cmd.Wait()
 
@@ -116,7 +115,6 @@ func StartRecording(outputFile string, stopChan, recordingDone chan struct{}, ta
 func findScreenDeviceIndex() (string, error) {
 	cmd := exec.Command("ffmpeg", "-f", "avfoundation", "-list_devices", "true", "-i", "")
 
-	// Capture output
 	outputBytes, err := cmd.CombinedOutput()
 	if err != nil {
 		if len(outputBytes) == 0 {
@@ -129,7 +127,7 @@ func findScreenDeviceIndex() (string, error) {
 	output := string(outputBytes)
 	lines := strings.Split(output, "\n")
 
-	// Get proper video device index
+	// Get main desktop device index
 	inVideoDevices := false
 	videoDeviceIndex := 0
 	for _, line := range lines {
@@ -137,7 +135,8 @@ func findScreenDeviceIndex() (string, error) {
 			inVideoDevices = true
 			continue
 		}
-		// Disregard the audio device
+		// TODO: Add audio support
+		// Currently not capturing the audio
 		if strings.Contains(line, "AVFoundation audio devices:") {
 			inVideoDevices = false
 			break
@@ -145,7 +144,6 @@ func findScreenDeviceIndex() (string, error) {
 
 		if inVideoDevices {
 
-			// Format output
 			trimmedLine := strings.TrimSpace(line)
 			if strings.Contains(trimmedLine, "Capture screen 0") {
 				fmt.Println("Located main device screen")

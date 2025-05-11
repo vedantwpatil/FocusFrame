@@ -1,5 +1,11 @@
 package editing
 
+/*
+#cgo LDFLAGS: -L${SRCDIR}/../../internal/editing/video-editing-engine/video-effects-processor/target/release -lvideo_effects_processor
+#include "../../internal/editing/video-editing-engine/video-effects-processor/include/video_editing_engine.h"
+*/
+import "C"
+
 import (
 	"fmt"
 	"log"
@@ -21,20 +27,19 @@ func EditVideoFile(inputFilePath, outputFilePath string, cursorHistory []trackin
 	}
 	defer video.Close()
 
-	// We calculate click frames to get what times we need to blur and zoom
 	var clickFrames []int
 	for index := range cursorHistory {
 		if cursorHistory[index].ClickTimeStamp != -1 {
 			clickFrames = append(clickFrames, int(cursorHistory[index].ClickTimeStamp.Seconds()))
 		}
 	}
-	// Print for debugging
+	// Debugging
 	fmt.Println(clickFrames)
 
 	// Temporary file list to concatenate
 	var segments []string
 
-	// Add the initial segment
+	// Add the initial segment to file path name
 	segments = append(segments, inputFilePath)
 
 	// It is a faster implementation to segment multiple ffmpeg commands together rather than using any type of post processing so we create a directory which stores all the partial video files
@@ -62,6 +67,8 @@ func EditVideoFile(inputFilePath, outputFilePath string, cursorHistory []trackin
 
 	fmt.Println("Adding zoom out effect")
 	intermediateOutputFilePath, segments = applyZoomOutEffect(intermediateOutputFilePath, clickFrames, targetFPS, tempDir, segments)
+
+	fmt.Println("Smoothening mouse path")
 
 	// Concatenate the segments
 	fmt.Println("Concatenating the segments")
@@ -94,6 +101,7 @@ func applyBlurEffects(inputFilePath string, clickFrames []int, secondsBeforeClic
 		if err != nil {
 			log.Fatalf("could not extract segment: %v", err)
 		}
+		fmt.Println("Extracted relevant segments")
 		segments = append(segments, segmentFileName)
 		inputFilePath = segmentFileName
 
@@ -174,7 +182,6 @@ func applyBoxBlur(inputPath string, startTime, endTime float64, blurRadius int, 
 	startTimeStr := fmt.Sprintf("%f", startTime)
 	endTimeStr := fmt.Sprintf("%f", endTime)
 
-	// Construct FFmpeg command
 	cmd := exec.Command("ffmpeg",
 		"-i", inputPath,
 		"-vf", fmt.Sprintf("boxblur=%d:enable='between(t,%s,%s)'", blurRadius, startTimeStr, endTimeStr),
@@ -196,7 +203,6 @@ func applyBoxBlur(inputPath string, startTime, endTime float64, blurRadius int, 
 }
 
 func applyZoomPan(inputPath string, startTime, endTime, zoomAmount, zoomEndAmount float64, outputPath string) (string, error) {
-	// Construct FFmpeg command
 	cmd := exec.Command("ffmpeg",
 		"-i", inputPath,
 		"-vf", fmt.Sprintf("zoompan=z='%f':d=125", zoomAmount),
@@ -222,7 +228,6 @@ func extractSegment(inputPath string, startTime, endTime float64, outputPath str
 	startTimeStr := fmt.Sprintf("%f", startTime)
 	endTimeStr := fmt.Sprintf("%f", endTime)
 
-	// Construct FFmpeg command
 	cmd := exec.Command("ffmpeg",
 		"-i", inputPath,
 		"-ss", startTimeStr, // Start time
@@ -251,9 +256,8 @@ func concatenateSegments(segmentPaths []string, outputPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create concat list: %w", err)
 	}
-	defer os.Remove(concatListPath) // Clean up the temporary file
+	defer os.Remove(concatListPath)
 
-	// Construct FFmpeg command
 	cmd := exec.Command("ffmpeg",
 		"-f", "concat",
 		"-safe", "0", // Needed for relative paths

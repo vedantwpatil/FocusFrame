@@ -8,16 +8,15 @@ Able to take screen recordings through taking multiple screenshots per second an
 
 Now we've switched over to using ffmpeg to capture the screen and encode the captured video and getting higher frame rate.
 
-Optimized screen recording in ffmpeg to automatically detect and record primary screen on macos.
-
-Need to restructure the project since all the logic is currently in the main.go file
+Optimized screen recording in ffmpeg to automatically detect and record primary screen on macos utilizing goroutines for async screen capture and video render for faster render times.
 
 ### Current Status
 
-Working on finding a way to track the mouse to be able to add high quality zoom animations when the mouse is clicked.
+Working on finding a way to track the mouse to be able to add high quality zoom animations when the mouse is clicked. Currently utilizing Cgo to integrate some rust code for the mouse smoothening algorithm while utilizing go with ffmpeg for other effects like the zoom and tracking
 
-### Potential Features
+## Potential Features
 
+- Adding cursor hiding for when the cursor is static
 - Adding audio to the screen recording
 - Adding webcam for camera feedback
 - Adding GUI for user to choose screens and capture area

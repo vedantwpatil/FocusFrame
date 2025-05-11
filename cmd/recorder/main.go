@@ -45,7 +45,7 @@ func main() {
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
 	// CSV file for mouse positions
-	file, err := os.Create("data.csv")
+	file, err := os.Create("output/data.csv")
 	if err != nil {
 		log.Fatalf("Failed creating file: %s", err)
 	}
@@ -110,7 +110,10 @@ func main() {
 			// Save file name
 			fmt.Print("Enter the name you wish to save the file under (Don't include the file format ex .mp4): ")
 			fmt.Scanln(&baseName)
-			outputFilePath = baseName + ".mp4"
+
+			// Outputs the pre edited video filepath for debugging
+			outputFilePath = "output/" + baseName + ".mp4"
+			editedOutputFilePath = "output/" + baseName + "-edited.mp4"
 			fmt.Printf("Output file: %s\n", outputFilePath)
 
 			fmt.Println("Starting screen recording... Press Ctrl+C to stop recording.")
@@ -161,6 +164,7 @@ func main() {
 				log.Fatalf("Error writing records: %s", err)
 			}
 
+			// TODO: Test if it accurately writes to csv files
 			fmt.Printf("Mouse tracking data saved to data.csv (%d records)\n", len(records))
 			fmt.Println("Exiting application...")
 			os.Exit(0)
