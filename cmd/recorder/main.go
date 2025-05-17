@@ -112,6 +112,7 @@ func main() {
 			fmt.Scanln(&baseName)
 
 			// Outputs the pre edited video filepath for debugging
+			os.Mkdir("output", 0777)
 			outputFilePath = "output/" + baseName + ".mp4"
 			editedOutputFilePath = "output/" + baseName + "-edited.mp4"
 			fmt.Printf("Output file: %s\n", outputFilePath)
@@ -129,6 +130,7 @@ func main() {
 			// End mouse tracking
 			hook.End()
 
+			fmt.Printf("Printing the output file path for debugging: %s", outputFilePath)
 			fmt.Println("Starting video editing...")
 			editing.EditVideoFile(outputFilePath, editedOutputFilePath, cursorHistory, float64(targetFPS))
 			fmt.Println("Video editing complete.")

@@ -11,6 +11,7 @@ GO_SOURCE_PKG := ./cmd/recorder
 GO_BINARY_NAME := screen_recorder
 GO_OUTPUT_DIR := bin
 GO_OUTPUT_PATH := $(GO_OUTPUT_DIR)/$(GO_BINARY_NAME)
+GO_OUTPUT_VIDEOS := output/
 
 # Phony targets (targets that don't represent files)
 .PHONY: all compile_rust compile_go compile_all run_go clean
@@ -52,3 +53,5 @@ clean:
 	@rm -f $(GO_OUTPUT_PATH)
 	@rmdir $(GO_OUTPUT_DIR) 2>/dev/null || true # Remove bin directory if empty
 	@echo ">>> Clean complete."
+	@rm -rf $(GO_OUTPUT_VIDEOS)
+

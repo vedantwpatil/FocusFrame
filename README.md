@@ -25,3 +25,7 @@ Working on finding a way to track the mouse to be able to add high quality zoom 
 ## Hardware
 
 The software was written on macOS utilizing the m3 max chip so the frame rate and video encoding speeds may vary
+
+## Dependencies
+
+This software requires golang as well as ffprobe and ffmpeg which it uses for the primary screen capture and the video editing pipeline

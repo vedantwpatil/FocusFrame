@@ -158,3 +158,13 @@ func findScreenDeviceIndex() (string, error) {
 
 	return "", errors.New("could not find 'Capture screen 0' in ffmpeg device list")
 }
+
+func GetVideoResolution(path string) (string, error) {
+	cmd := exec.Command("ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "of", "csv=s=x:p=0", path)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return "Failed to get the video resolution. The file path tried was: " + path, err
+	}
+	resolution := strings.TrimSpace(string(out))
+	return resolution, nil
+}
