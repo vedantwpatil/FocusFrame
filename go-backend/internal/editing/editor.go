@@ -49,6 +49,9 @@ func EditVideoFile(inputFilePath, outputFilePath string, cursorHistory []trackin
 	// Debugging
 	fmt.Println(clickFrames)
 	resolution, err := recording.GetVideoResolution(inputFilePath)
+	if err != nil {
+		log.Fatalf("Unable to properly get the video resolution\n Error Message: %v", err)
+	}
 
 	// Temporary file list to concatenate
 	var segments []string
@@ -114,7 +117,7 @@ func applyBlurEffects(inputFilePath string, clickFrames []int, cursorHistory []t
 			// If there's a next click frame, set the end time to the next click.
 			endTime = float64(clickFrames[i+1])
 		} else {
-			// If it's the last click frame, set the end time to zero so we know that we're at the end of the video
+			// If it's the last click frame, set the end time  o zero so we know that we're at the end of the video
 			endTime = 0
 		}
 
