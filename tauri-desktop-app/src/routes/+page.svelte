@@ -1,9 +1,22 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
+  import { onMount } from "svelte";
 
   let isRecording = $state(false);
   let recordingName = $state("");
-  let recordedFiles = $state<string[]>([]);
+  let recordedFiles = $state<{name: string, path: string}[]>([]);
+
+  async function loadRecordings() {
+    try {
+      recordedFiles = await invoke('get_recordings');
+    } catch (error) {
+      console.error('Failed to load recordings:', error);
+    }
+  }
+
+  onMount(() => {
+    loadRecordings();
+  });
 
   async function startRecording(event: Event) {
     event.preventDefault();
@@ -11,17 +24,35 @@
       alert("Please enter a name for the recording");
       return;
     }
-    isRecording = true;
-    // TODO: Implement recording start
+    try {
+      await invoke('start_recording', { name: recordingName });
+      isRecording = true;
+    } catch (error) {
+      console.error('Failed to start recording:', error);
+      alert('Failed to start recording');
+    }
   }
 
   async function stopRecording() {
-    isRecording = false;
-    // TODO: Implement recording stop
+    try {
+      await invoke('stop_recording');
+      isRecording = false;
+      recordingName = "";
+      await loadRecordings();
+    } catch (error) {
+      console.error('Failed to stop recording:', error);
+      alert('Failed to stop recording');
+    }
   }
 
   async function editVideo(filename: string) {
-    // TODO: Implement video editing
+    try {
+      // TODO: Implement video editing
+      console.log('Editing video:', filename);
+    } catch (error) {
+      console.error('Failed to edit video:', error);
+      alert('Failed to edit video');
+    }
   }
 </script>
 
@@ -61,9 +92,9 @@
       <ul>
         {#each recordedFiles as file}
           <li class="recording-item">
-            <span>{file}</span>
+            <span>{file.name}</span>
             <div class="actions">
-              <button on:click={() => editVideo(file)}>Edit</button>
+              <button on:click={() => editVideo(file.path)}>Edit</button>
             </div>
           </li>
         {/each}
