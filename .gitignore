@@ -12,3 +12,4 @@ frames/*
 
 # Ignore rust build artifacts
 **/target/
+.env
