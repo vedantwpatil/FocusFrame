@@ -112,6 +112,9 @@ func (app *Application) editVideo() error {
 	pipeline.AddEffect(video.NewBlurEffect(app.config, processor))
 	pipeline.AddEffect(video.NewZoomEffect(app.config, processor))
 
+	// Set mouse events in the pipeline
+	pipeline.SetMouseEvents(app.recorder.GetCursorHistory(), app.recorder.GetStartTime())
+
 	// Process the video
 	return pipeline.Process(app.ctx, inputPath, outputPath)
 }

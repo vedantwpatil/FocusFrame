@@ -9,6 +9,7 @@ import "C"
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/vedantwpatil/Screen-Capture/internal/config"
 	"github.com/vedantwpatil/Screen-Capture/internal/tracking"
@@ -31,22 +32,36 @@ func (e *Editor) EditVideo(inputPath, outputPath string, cursorHistory []trackin
 	// Create a context for the editing process
 	ctx := context.Background()
 
-	// Create a progress reporter
-	// progress := video.NewProgressReporter()
-
 	// Configure the pipeline
-	// e.pipeline.SetProgressReporter(progress)
-	// e.pipeline.SetTargetFPS(targetFPS)
-
-	// Add effects to the pipeline
 	processor := video.NewProcessor(e.config)
-	e.pipeline.AddEffect(video.NewBlurEffect(e.config, processor))
-	e.pipeline.AddEffect(video.NewZoomEffect(e.config, processor))
+	
+	// Create progress bar for overall process
+	progressBar := video.NewProgressBar("Processing video effects")
+	
+	// Add effects to the pipeline in the correct order
+	// First apply the follow effect to track cursor movement
+	followEffect := video.NewFollowEffect(e.config, processor)
+	e.pipeline.AddEffect(followEffect)
+	
+	// Then apply the zoom effect to emphasize click points
+	zoomEffect := video.NewZoomEffect(e.config, processor)
+	e.pipeline.AddEffect(zoomEffect)
+	
+	// Finally apply blur for smooth transitions
+	blurEffect := video.NewBlurEffect(e.config, processor)
+	e.pipeline.AddEffect(blurEffect)
 
-	// Process the video
+	// Set mouse events in the pipeline
+	e.pipeline.SetMouseEvents(cursorHistory, time.Now())
+
+	// Process the video with progress tracking
 	if err := e.pipeline.Process(ctx, inputPath, outputPath); err != nil {
+		progressBar.ReportError(err)
 		return fmt.Errorf("failed to process video: %w", err)
 	}
+
+	// Report completion
+	progressBar.ReportComplete()
 
 	return nil
 }

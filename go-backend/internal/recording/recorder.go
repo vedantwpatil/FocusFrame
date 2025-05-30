@@ -181,6 +181,10 @@ func (r *Recorder) GetCursorHistory() []tracking.CursorPosition {
 	return r.cursorHistory
 }
 
+func (r *Recorder) GetStartTime() time.Time {
+	return r.startTime
+}
+
 func findScreenDeviceIndex() (string, error) {
 	cmd := exec.Command("ffmpeg", "-f", "avfoundation", "-list_devices", "true", "-i", "")
 

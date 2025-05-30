@@ -10,6 +10,10 @@ type Config struct {
 			Enabled bool
 			Factor  float64
 		}
+		Follow struct {
+			Enabled bool
+			Window  float64 // Window size in seconds before and after click
+		}
 	}
 	Processing struct {
 		Parallel bool
@@ -32,6 +36,10 @@ func NewConfig() *Config {
 				Enabled bool
 				Factor  float64
 			}
+			Follow struct {
+				Enabled bool
+				Window  float64
+			}
 		}{
 			Blur: struct {
 				Enabled bool
@@ -46,6 +54,13 @@ func NewConfig() *Config {
 			}{
 				Enabled: true,
 				Factor:  1.5,
+			},
+			Follow: struct {
+				Enabled bool
+				Window  float64
+			}{
+				Enabled: true,
+				Window:  1.0, // 1 second window before and after click
 			},
 		},
 		Processing: struct {

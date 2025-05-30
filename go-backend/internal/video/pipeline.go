@@ -4,24 +4,36 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/vedantwpatil/Screen-Capture/internal/config"
+	"github.com/vedantwpatil/Screen-Capture/internal/tracking"
 )
 
 type Pipeline struct {
-	config    *config.Config
-	effects   []Effect
-	processor *Processor
-	progress  ProgressReporter
+	config       *config.Config
+	effects      []Effect
+	processor    *Processor
+	progress     ProgressReporter
+	mouseEvents  []tracking.CursorPosition
+	startTime    time.Time
 }
 
 func NewPipeline(config *config.Config) *Pipeline {
 	processor := NewProcessor(config)
 	return &Pipeline{
-		config:    config,
-		effects:   make([]Effect, 0),
-		processor: processor,
+		config:      config,
+		effects:     make([]Effect, 0),
+		processor:   processor,
+		mouseEvents: make([]tracking.CursorPosition, 0),
+		startTime:   time.Now(),
 	}
+}
+
+// SetMouseEvents sets the mouse events for the pipeline
+func (p *Pipeline) SetMouseEvents(events []tracking.CursorPosition, startTime time.Time) {
+	p.mouseEvents = events
+	p.startTime = startTime
 }
 
 // AddEffect adds a new effect to the pipeline
@@ -42,24 +54,49 @@ func (p *Pipeline) processEffect(ctx context.Context, effect Effect, inputPath s
 	// Create a video segment from the input
 	segment := VideoSegment{
 		Path:      inputPath,
-		StartTime: 0,
+		StartTime: float64(p.startTime.Unix()),
 		EndTime:   0, // Will be set by the processor
 		Metadata:  make(map[string]interface{}),
 	}
 
+	// Add click events to the effect
+	switch e := effect.(type) {
+	case *BlurEffect:
+		for _, click := range p.mouseEvents {
+			if click.ClickTimeStamp >= 0 { // Only add actual click events
+				e.AddClickEvent(click)
+			}
+		}
+	case *ZoomEffect:
+		for _, click := range p.mouseEvents {
+			if click.ClickTimeStamp >= 0 { // Only add actual click events
+				e.AddClickEvent(click)
+			}
+		}
+	case *FollowEffect:
+		for _, click := range p.mouseEvents {
+			if click.ClickTimeStamp >= 0 { // Only add actual click events
+				e.AddClickEvent(click)
+			}
+		}
+	}
+
+	// Create progress bar for this effect
+	progressBar := NewProgressBar(fmt.Sprintf("Applying %s effect", effect.GetName()))
+	p.progress = progressBar
+
 	// Apply the effect
 	processedSegment, err := effect.Apply(ctx, segment)
 	if err != nil {
+		progressBar.ReportError(err)
 		return fmt.Errorf("failed to apply effect %s: %w", effect.GetName(), err)
 	}
 
 	// Store the processed segment
 	effect.SetProcessedSegment(processedSegment)
 
-	// Update progress
-	if p.progress != nil {
-		p.progress.Report(0.5) // Example progress value
-	}
+	// Report completion
+	progressBar.ReportComplete()
 
 	return nil
 }
@@ -85,22 +122,57 @@ func (p *Pipeline) combineEffects(ctx context.Context, outputPath string) error 
 	return nil
 }
 
+// Process applies all effects in the pipeline to the input video
 func (p *Pipeline) Process(ctx context.Context, inputPath, outputPath string) error {
 	// 1. Validate input
 	if err := p.validateInput(inputPath); err != nil {
 		return err
 	}
 
-	// 2. Process each effect in sequence
+	// Create overall progress bar
+	progressBar := NewProgressBar("Processing video")
+	p.progress = progressBar
+
+	// 2. Process each effect sequentially
 	currentInput := inputPath
+	tempOutput := ""
+
 	for i, effect := range p.effects {
-		if err := p.processEffect(ctx, effect, currentInput); err != nil {
-			return fmt.Errorf("failed to process effect %d (%s): %w", i, effect.GetName(), err)
+		// Report progress for overall process
+		progress := float64(i) / float64(len(p.effects))
+		progressBar.Report(progress)
+
+		// Create a temporary output path for this effect
+		if i == len(p.effects)-1 {
+			tempOutput = outputPath
+		} else {
+			tempOutput = fmt.Sprintf("%s_temp_%d.mp4", inputPath[:len(inputPath)-4], i)
 		}
-		// Use the output of this effect as input for the next effect
-		currentInput = effect.GetProcessedSegment().Path
+
+		// Apply the effect
+		if err := p.processEffect(ctx, effect, currentInput); err != nil {
+			// Clean up temporary files
+			for j := 0; j < i; j++ {
+				tempFile := fmt.Sprintf("%s_temp_%d.mp4", inputPath[:len(inputPath)-4], j)
+				os.Remove(tempFile)
+			}
+			return fmt.Errorf("failed to apply effect %s: %w", effect.GetName(), err)
+		}
+
+		// Update input for next effect
+		if i < len(p.effects)-1 {
+			currentInput = tempOutput
+		}
+
+		// Clean up previous temporary file
+		if i > 0 {
+			prevTemp := fmt.Sprintf("%s_temp_%d.mp4", inputPath[:len(inputPath)-4], i-1)
+			os.Remove(prevTemp)
+		}
 	}
 
-	// 3. Combine effects and produce final output
-	return p.combineEffects(ctx, outputPath)
+	// Report completion
+	progressBar.ReportComplete()
+
+	return nil
 }
