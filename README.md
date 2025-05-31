@@ -12,9 +12,9 @@ Optimized screen recording in ffmpeg to automatically detect and record primary 
 
 ### Current Status
 
-Working on finding a way to track the mouse to be able to add high quality zoom animations when the mouse is clicked. Currently utilizing Cgo to integrate some rust code for the mouse smoothening algorithm while utilizing go with ffmpeg for other effects like the zoom and tracking
+Working on finding a way to track the mouse to be able to add the video effect animations when the mouse is clicked. Currently utilizing Cgo to integrate some rust code for the mouse smoothening algorithm while utilizing go with ffmpeg for other effects like the zoom and blurring. I've also added the front-end to know what to build later on and the architecture that I've decided on. The primary focus is first creating the mouse smoothening algorithm and from there to then add the mouse tracking engine. 
 
-Decided to start working on the front end before working on the video editing to be able to see some amount of visual progress and be able to better use/test the project
+Something for consideration is doing all of the video effects processing in rust and then just calling it from go although I am not sure about this but it feels like it would work/make sense. 
 
 ## Potential Features
 
