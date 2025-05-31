@@ -10,13 +10,11 @@ import (
 
 	"github.com/vedantwpatil/Screen-Capture/internal/config"
 	"github.com/vedantwpatil/Screen-Capture/internal/recording"
-	"github.com/vedantwpatil/Screen-Capture/internal/video"
 )
 
 type Application struct {
 	config   *config.Config
 	recorder *recording.Recorder
-	pipeline *video.Pipeline
 	ctx      context.Context
 	cancel   context.CancelFunc
 }
@@ -104,19 +102,7 @@ func (app *Application) editVideo() error {
 	inputPath := app.recorder.GetOutputPath()
 	outputPath := inputPath[:len(inputPath)-4] + "-edited.mp4" // Remove .mp4 and add -edited.mp4
 
-	// Create a new pipeline with effects
-	pipeline := video.NewPipeline(app.config)
-	processor := video.NewProcessor(app.config)
-	
-	// Add effects to the pipeline
-	pipeline.AddEffect(video.NewBlurEffect(app.config, processor))
-	pipeline.AddEffect(video.NewZoomEffect(app.config, processor))
-
-	// Set mouse events in the pipeline
-	pipeline.SetMouseEvents(app.recorder.GetCursorHistory(), app.recorder.GetStartTime())
-
-	// Process the video
-	return pipeline.Process(app.ctx, inputPath, outputPath)
+	return nil
 }
 
 func (app *Application) cleanup() error {
