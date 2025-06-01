@@ -12,9 +12,7 @@ Optimized screen recording in ffmpeg to automatically detect and record primary 
 
 ### Current Status
 
-Working on finding a way to track the mouse to be able to add the video effect animations when the mouse is clicked. Currently utilizing Cgo to integrate some rust code for the mouse smoothening algorithm while utilizing go with ffmpeg for other effects like the zoom and blurring. I've also added the front-end to know what to build later on and the architecture that I've decided on. The primary focus is first creating the mouse smoothening algorithm and from there to then add the mouse tracking engine. 
-
-Something for consideration is doing all of the video effects processing in rust and then just calling it from go although I am not sure about this but it feels like it would work/make sense. 
+Working on finding a way to track the mouse to be able to add the video effect animations when the mouse is clicked. Currently utilizing Cgo to integrate some rust code for the mouse smoothening algorithm while utilizing go with ffmpeg for other effects like the zoom and blurring. I've also added the front-end to know what to build later on and the architecture that I've decided on. The primary focus is first creating the mouse smoothening algorithm and from there to then add the mouse tracking engine. Decided to use rust for all the video processing/editing effects for better performance. 
 
 ## Potential Features
 
@@ -26,8 +24,9 @@ Something for consideration is doing all of the video effects processing in rust
 
 ## Hardware
 
-The software was written on macOS utilizing the m3 max chip so the frame rate and video encoding speeds may vary
+The software was written on macOS utilizing the m3 max chip so the frame rate and video encoding speeds may vary but screen recording is very performative
 
 ## Dependencies
 
-This software requires golang as well as ffprobe and ffmpeg which it uses for the primary screen capture and the video editing pipeline
+This software requires utilizes rust and go as its main languages for it's backend as well as ffprobe and ffmpeg which it uses for the primary screen capture and the video editing pipeline and utilizes the tauri framework combined with svelete for it's frontend 
+`Go version 1.17+`

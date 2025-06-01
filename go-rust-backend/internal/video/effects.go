@@ -7,19 +7,15 @@ package video
 import "C"
 
 import (
+	"time"
 	"unsafe"
+
+	"github.com/vedantwpatil/Screen-Capture/internal/tracking"
 )
 
 // Serves as a way to call the effect algorithms in rust from go. Here we will prepare the videos into a way that is simple for the rust code to be able to apply the algorithms/video effects
 
-// Go representation matching Rust's CPoint
-type GoPoint struct {
-	X           float64
-	Y           float64
-	TimestampMs int64
-}
-
-func SmoothCursorPath(rawPoints []GoPoint, tension, friction, mass float64) []GoPoint {
+func SmoothCursorPath(rawPoints []tracking.CursorPosition, tension, friction, mass float64) []tracking.CursorPosition {
 	if len(rawPoints) == 0 {
 		return nil
 	}
@@ -30,7 +26,7 @@ func SmoothCursorPath(rawPoints []GoPoint, tension, friction, mass float64) []Go
 		cPoints[i] = C.CPoint{
 			x:            C.double(p.X),
 			y:            C.double(p.Y),
-			timestamp_ms: C.longlong(p.TimestampMs),
+			timestamp_ms: C.longlong(p.ClickTimeStamp),
 		}
 	}
 
@@ -44,22 +40,17 @@ func SmoothCursorPath(rawPoints []GoPoint, tension, friction, mass float64) []Go
 	// 4. Convert the C result back to a Go slice
 	//    This requires careful handling of the C pointer and length.
 	//    The unsafe.Slice function (Go 1.17+) can be helpful here.
-	//    Prior to Go 1.17, you'd use a different pattern:
-	//    header := (*reflect.SliceHeader)(unsafe.Pointer(&goSlice))
-	//    header.Data = uintptr(unsafe.Pointer(cSmoothedPath.points))
-	//    header.Len = int(cSmoothedPath.len)
-	//    header.Cap = int(cSmoothedPath.len)
 
-	var goSmoothedPoints []GoPoint
+	var goSmoothedPoints []tracking.CursorPosition
 	if cSmoothedPath.points != nil && cSmoothedPath.len > 0 {
 		// Using unsafe.Slice (Go 1.17+)
 		cResultSlice := unsafe.Slice(cSmoothedPath.points, cSmoothedPath.len)
-		goSmoothedPoints = make([]GoPoint, cSmoothedPath.len)
+		goSmoothedPoints = make([]tracking.CursorPosition, cSmoothedPath.len)
 		for i, cp := range cResultSlice {
-			goSmoothedPoints[i] = GoPoint{
-				X:           float64(cp.x),
-				Y:           float64(cp.y),
-				TimestampMs: int64(cp.timestamp_ms),
+			goSmoothedPoints[i] = tracking.CursorPosition{
+				X:              int16(cp.x),
+				Y:              int16(cp.y),
+				ClickTimeStamp: time.Duration(cp.timestamp_ms),
 			}
 		}
 	}

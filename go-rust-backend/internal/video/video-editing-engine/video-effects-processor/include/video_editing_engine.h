@@ -6,9 +6,9 @@
 #include <stdio.h>
 
 typedef struct {
-  double x;
-  double y;
-  int64_t timestamp_ms;
+  int x;
+  int y;
+  double timestamp_ms;
 } CPoint;
 
 typedef struct {

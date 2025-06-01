@@ -26,61 +26,139 @@ pub extern "C" fn greet_from_rust() {
 
 #[repr(C)]
 pub struct CPoint {
-    pub x: f64,
-    pub y: f64,
-    pub timestamp_ms: i64,
+    pub x: f32,
+    pub y: f32,
+    pub timestamp_ms: f64,
 }
 
 #[repr(C)]
 pub struct CSmoothedPath {
-    pub points: *mut CPoint, // Pointer to an array of CPoint
-    pub len: usize,          // Number of points in the array
+    pub points: *mut CPoint,
+    pub len: usize,
+}
+
+fn num_segments(point_chain: &[CPoint], quadruple_size: usize) -> usize {
+    return point_chain.len() - (quadruple_size - 1);
+}
+
+fn catmull_rom_spline(
+    p0: CPoint,
+    p1: CPoint,
+    p2: CPoint,
+    p3: CPoint,
+    num_points: usize,
+    alpha: f32,
+) {
+    let t_0: f32 = 0.0;
+    let t_1 = calculate_t_j(t_0, &p0, &p1, alpha);
+    let t_2 = calculate_t_j(t_1, &p1, &p2, alpha);
+    let t_3 = calculate_t_j(t_2, &p2, &p3, alpha);
+
+    let t = reshape_to_column_vector_f32(linspace(t_1, t_2, num_points));
+}
+
+fn linspace(start: f32, end: f32, num_points: usize) -> Vec<f32> {
+    if num_points == 0 {
+        return Vec::new();
+    }
+    if num_points == 1 {
+        return vec![start];
+    }
+
+    let mut result = Vec::with_capacity(num_points);
+    // Calculate the step size.
+    // To include both `start` and `end`, there are `num_points - 1` intervals.
+    let step = (end - start) / (num_points - 1) as f32;
+
+    for i in 0..num_points {
+        let value = start + (i as f32) * step;
+        result.push(value);
+    }
+    result
+}
+fn reshape_to_column_vector_f32(flat_vector: Vec<f32>) -> Vec<Vec<f32>> {
+    let mut reshaped_vector = Vec::with_capacity(flat_vector.len());
+    for val in flat_vector {
+        reshaped_vector.push(vec![val]);
+    }
+    reshaped_vector
+}
+fn calculate_t_j(t_i: f32, p_i: &CPoint, p_j: &CPoint, alpha: f32) -> f32 {
+    let x_i = p_i.x;
+    let y_i = p_i.y;
+
+    let x_j = p_j.x;
+    let y_j = p_j.y;
+
+    let dx = x_j - x_i;
+    let dy = y_j - y_i;
+
+    let l = (dx.powi(2) + dy.powi(2)).sqrt();
+    return t_i + l.powf(alpha);
 }
 
 #[no_mangle]
 pub extern "C" fn smooth_cursor_path(
     raw_points_ptr: *const CPoint,
     num_points: usize,
-    tension: f64,
-    friction: f64,
-    mass: f64,
+    tension: f32,
+    friction: f32,
+    mass: f32,
 ) -> CSmoothedPath {
-    // 1. Convert raw_points_ptr and num_points into a Rust slice:
-    //    let raw_points = unsafe { std::slice::from_raw_parts(raw_points_ptr, num_points) };
-    // 2. Implement your smoothing logic using these raw_points and parameters.
-    // 3. Allocate memory for the smoothed points that Rust will own.
-    //    IMPORTANT: You must also provide a function to free this memory from Go.
-    //    let mut smoothed_vec: Vec<CPoint> = ...; // Your smoothed points
-    //    smoothed_vec.shrink_to_fit(); // Optional
-    //    let path = CSmoothedPath {
-    //        points: smoothed_vec.as_mut_ptr(),
-    //        len: smoothed_vec.len(),
-    //    };
-    //    std::mem::forget(smoothed_vec); // Prevent Rust from dropping the Vec's data, as Go will manage it via the pointer
-    //    path
-    // Placeholder:
-    CSmoothedPath {
-        points: std::ptr::null_mut(),
-        len: 0,
+    // Ensure the pointer is not null before trying to create a slice from it
+    if raw_points_ptr.is_null() || num_points == 0 {
+        return CSmoothedPath {
+            points: std::ptr::null_mut(),
+            len: 0,
+        };
     }
+
+    // Unsafe block is required because we are dereferencing a raw pointer
+    // and trusting that I wrote the code correctly and have provided a valid pointer and length
+    let points_slice: &[CPoint] = unsafe { std::slice::from_raw_parts(raw_points_ptr, num_points) };
+
+    if points_slice.is_empty() {
+        return CSmoothedPath {
+            points: std::ptr::null_mut(),
+            len: 0,
+        };
+    }
+
+    // Smoothing Logic
+    // 1. Read data from `points_slice`.
+    // 2. Perform calculations (Centrpetal ron catmull spline interpretation for path generation, physics based mouse movement).
+    // 3. Allocate new memory for the smoothed points (e.g., using Vec<CPoint>).
+    // 4. Populate this new memory with the smoothed CPoint data.
+    // 5. Convert the Vec<CPoint> into a raw pointer and length to return in CSmoothedPath.
+    //    Remember to use std::mem::forget on the Vec to prevent Rust from deallocating
+    //    the memory if Go is supposed to manage it via the returned pointer.
+
+    let quadruple_size: usize = 4;
+
+    // Placeholder for actual smoothed path generation
+    let mut smoothed_points_vec: Vec<CPoint> = Vec::new();
+    smoothed_points_vec.push(points_slice[0]);
+
+    // Convert Vec to CSmoothedPath for returning to C/Go
+    // This leaks the memory, which Go will need to manage and free later
+    // using `free_smoothed_path`.
+    smoothed_points_vec.shrink_to_fit(); // Reduces the capcity to the length
+    let len = smoothed_points_vec.len();
+    let ptr = smoothed_points_vec.as_mut_ptr();
+    std::mem::forget(smoothed_points_vec); // Prevent Rust from dropping the data
+
+    CSmoothedPath { points: ptr, len }
 }
 
 #[no_mangle]
 pub extern "C" fn free_smoothed_path(path: CSmoothedPath) {
-    // unsafe {
-    //     if !path.points.is_null() {
-    //         let _ = Vec::from_raw_parts(path.points, path.len, path.len); // Reconstruct Vec to deallocate
-    //     }
-    // }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+    // This function is crucial for Go to call to free the memory
+    // allocated by Rust and passed back in CSmoothedPath.
+    unsafe {
+        if !path.points.is_null() && path.len > 0 {
+            // Reconstruct the Vec from the raw parts and let it drop,
+            // which deallocates the memory.
+            let _ = Vec::from_raw_parts(path.points, path.len, path.len);
+        }
     }
 }
