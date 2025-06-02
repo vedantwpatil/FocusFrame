@@ -1,3 +1,5 @@
+use std::f32;
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct CPoint {
@@ -85,13 +87,28 @@ fn interpolate_points(
     p_start: &CPoint,
     p_end: &CPoint,
 ) -> CPoint {
-    let weight1 = (t_end - t) / (t_end - t_start);
-    let weight2 = (t - t_start) / (t_end - t_start);
+    let (weight1, weight2) = if (t_end - t_start).abs() < f32::EPSILON {
+        // Avoid division by zero if t_start and t_end are the same.
+        // If t is also t_start, result is p_start. If t is t_end, result is p_end.
+        // Default to p_start if interval is zero.
+        if t <= t_start {
+            (1.0, 0.0)
+        } else {
+            (0.0, 1.0)
+        }
+    } else {
+        (
+            (t_end - t) / (t_end - t_start),
+            (t - t_start) / (t_end - t_start),
+        )
+    };
 
     CPoint {
         x: weight1 * p_start.x + weight2 * p_end.x,
         y: weight1 * p_start.y + weight2 * p_end.y,
-        timestamp_ms: -1.0,
+        // Correctly interpolate timestamp_ms (f64) using f32 weights cast to f64
+        timestamp_ms: (weight1 as f64) * p_start.timestamp_ms
+            + (weight2 as f64) * p_end.timestamp_ms,
     }
 }
 
@@ -132,58 +149,96 @@ fn calculate_t_j(t_i: f32, p_i: &CPoint, p_j: &CPoint, alpha: f32) -> f32 {
 #[no_mangle]
 pub extern "C" fn smooth_cursor_path(
     raw_points_ptr: *const CPoint,
-    num_points: usize,
-    tension: f32,
-    friction: f32,
-    mass: f32,
+    raw_points_len: usize,
+    points_per_segment_ptr: *const i64, // Array of point counts for each segment
+    points_per_segment_len: usize,      // Length of points_per_segment_ptr
+    alpha: f32,                         // Catmull-Rom alpha
+    _tension: f32,  // Currently unused by Catmull-Rom, for potential physics layer
+    _friction: f32, // Currently unused
+    _mass: f32,     // Currently unused
 ) -> CSmoothedPath {
-    // Ensure the pointer is not null before trying to create a slice from it
-    if raw_points_ptr.is_null() || num_points == 0 {
+    // Basic safety checks for pointers
+    if raw_points_ptr.is_null() || points_per_segment_ptr.is_null() {
         return CSmoothedPath {
             points: std::ptr::null_mut(),
             len: 0,
         };
     }
 
-    // Unsafe block is required because we are dereferencing a raw pointer
-    // and trusting that I wrote the code correctly and have provided a valid pointer and length
-    let points_slice: &[CPoint] = unsafe { std::slice::from_raw_parts(raw_points_ptr, num_points) };
+    // Create slices from raw parts (unsafe operation)
+    let points_slice: &[CPoint] =
+        unsafe { std::slice::from_raw_parts(raw_points_ptr, raw_points_len) };
 
-    if points_slice.is_empty() {
+    let frame_amount_slice: &[i64] =
+        unsafe { std::slice::from_raw_parts(points_per_segment_ptr, points_per_segment_len) };
+
+    // Check for empty inputs
+    if points_slice.is_empty() || frame_amount_slice.is_empty() {
         return CSmoothedPath {
             points: std::ptr::null_mut(),
             len: 0,
         };
     }
 
-    // Smoothing Logic
-    // 1. Read data from `points_slice`.
-    // 2. Perform calculations (Centrpetal ron catmull spline interpretation for path generation, physics based mouse movement).
-    // 3. Allocate new memory for the smoothed points (e.g., using Vec<CPoint>).
-    // 4. Populate this new memory with the smoothed CPoint data.
-    // 5. Convert the Vec<CPoint> into a raw pointer and length to return in CSmoothedPath.
-    //    Remember to use std::mem::forget on the Vec to prevent Rust from deallocating
-    //    the memory if Go is supposed to manage it via the returned pointer.
+    let quadruple_size: usize = 4; // Number of points needed to define one Catmull-Rom segment
 
-    let quadruple_size: usize = 4;
-    // This effects how the smoothness of the lines, either choose 0.5 or 1.0
-    // TODO: Make this personally configurable for the user to choose which they prefer more and
-    // make it a sliding value between 0.0-1.0
-    let alpha = 0.5;
+    // Calculate the number of segments we can form
+    // If points_slice.len() < quadruple_size, num_segments will be 0.
+    let num_segments = points_slice.len().saturating_sub(quadruple_size - 1);
 
-    let smooth = catmull_rom_chain(points_slice, num_points, alpha, quadruple_size);
+    if num_segments == 0 {
+        // Not enough points to form any segment
+        return CSmoothedPath {
+            points: std::ptr::null_mut(),
+            len: 0,
+        };
+    }
 
-    // Placeholder for actual smoothed path generation
-    let mut smoothed_points_vec: Vec<CPoint> = Vec::new();
-    smoothed_points_vec.push(points_slice[0]);
+    // The length of frame_amount_slice must match the number of segments we can process.
+    if frame_amount_slice.len() != num_segments {
+        // Data mismatch: Go provided an incorrect number of segment point counts.
+        // Consider logging an error here if possible, or handle as per API contract.
+        return CSmoothedPath {
+            points: std::ptr::null_mut(),
+            len: 0,
+        };
+    }
 
-    // Convert Vec to CSmoothedPath for returning to C/Go
-    // This leaks the memory, which Go will need to manage and free later
-    // using `free_smoothed_path`.
-    smoothed_points_vec.shrink_to_fit(); // Reduces the capcity to the length
-    let len = smoothed_points_vec.len();
-    let ptr = smoothed_points_vec.as_mut_ptr();
-    std::mem::forget(smoothed_points_vec); // Prevent Rust from dropping the data
+    let mut all_spline_points: Vec<CPoint> = Vec::new();
+    // Estimate capacity: sum of all points in frame_amount_slice
+    let total_expected_points: usize = frame_amount_slice.iter().map(|&x| x as usize).sum();
+    all_spline_points.reserve(total_expected_points);
+
+    // Iterate through the raw points in windows of 'quadruple_size'
+    // Each window provides P0, P1, P2, P3 for one spline segment.
+    // The segment is primarily between P1 and P2.
+    for (i, window) in points_slice.windows(quadruple_size).enumerate() {
+        let p0 = window[0];
+        let p1 = window[1];
+        let p2 = window[2];
+        let p3 = window[3];
+
+        // Get the number of points to interpolate for this specific segment
+        let num_points_for_this_segment = frame_amount_slice[i] as usize;
+
+        // Ensure num_points_for_this_segment is reasonable (e.g., at least 2 if not 0)
+        // If 0 or 1, catmull_rom_spline might behave unexpectedly or inefficiently depending on linspace.
+        // catmull_rom_spline's linspace handles num_points = 0 or 1, returning empty or single point vec.
+        if num_points_for_this_segment > 0 {
+            let segment_points =
+                catmull_rom_spline(p0, p1, p2, p3, num_points_for_this_segment, alpha);
+            all_spline_points.extend(segment_points);
+        } else {
+            // If num_points_for_this_segment is 0, we add p1 to ensure connectivity
+            // but typically Go side would ensure num_points_for_this_segment >= 1 or >= 2.
+        }
+    }
+
+    // Prepare the result to be returned via FFI
+    all_spline_points.shrink_to_fit();
+    let len = all_spline_points.len();
+    let ptr = all_spline_points.as_mut_ptr();
+    std::mem::forget(all_spline_points); // Prevent Rust from dropping the data
 
     CSmoothedPath { points: ptr, len }
 }

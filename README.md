@@ -1,32 +1,84 @@
 # Focus Frame
 
-This program captures screen recording and will be able to add high quality smooth zoom animations on click as well as record high quality video. I began writing this in go to get a better handle on the more advanced features of go. Python was another consideration for this project however the performance of the video encoding was a major consideration and was thought to be a lot slower so I avoided that. Finally I found out later that being able to create one single executable in go would ensure high usability on multiple platforms and that was an additional nice touch.
+A high-performance screen recording application that captures screen content and adds smooth zoom animations on click. Built with Go and Rust for optimal performance, featuring a modern Tauri + Svelte frontend.
 
-## Project Timeline
+## Architecture
 
-Able to take screen recordings through taking multiple screenshots per second and then encoding them all together using ffmpeg. Was unable to capture more than (First iteration) 5FPS (Second Iteration) 7 FPS and looking at alternative methods to increase frame rate utilizing the screenshots package.
+The application uses a hybrid architecture:
+- **Backend**: Go + Rust
+  - Go handles screen recording and application logic
+  - Rust processes video effects and cursor path smoothing
+  - FFmpeg for high-performance screen capture and video encoding
+- **Frontend**: Tauri + Svelte
+  - Modern, responsive UI
+  - Cross-platform compatibility
 
-Now we've switched over to using ffmpeg to capture the screen and encode the captured video and getting higher frame rate.
+## Current Features
 
-Optimized screen recording in ffmpeg to automatically detect and record primary screen on macos utilizing goroutines for async screen capture and video render for faster render times.
+- High-performance screen recording using FFmpeg
+- Mouse tracking and cursor path smoothing
+- Configurable video effects:
+  - Blur effects
+  - Zoom animations
+  - Click tracking
+- Cross-platform support (currently optimized for macOS)
 
-### Current Status
+## Project Structure
 
-Working on finding a way to track the mouse to be able to add the video effect animations when the mouse is clicked. Currently utilizing Cgo to integrate some rust code for the mouse smoothening algorithm while utilizing go with ffmpeg for other effects like the zoom and blurring. I've also added the front-end to know what to build later on and the architecture that I've decided on. The primary focus is first creating the mouse smoothening algorithm and from there to then add the mouse tracking engine. Decided to use rust for all the video processing/editing effects for better performance. 
-
-## Potential Features
-
-- Adding cursor hiding for when the cursor is static
-- Adding audio to the screen recording
-- Adding webcam for camera feedback
-- Adding GUI for user to choose screens and capture area
-- Adding editing interface for user to edit the captured video and audio
-
-## Hardware
-
-The software was written on macOS utilizing the m3 max chip so the frame rate and video encoding speeds may vary but screen recording is very performative
+```
+.
+├── go-rust-backend/         # Backend implementation
+│   ├── cmd/                # Command-line interface
+│   ├── internal/           # Core functionality
+│   │   ├── config/        # Configuration management
+│   │   ├── recording/     # Screen recording logic
+│   │   ├── tracking/      # Mouse tracking
+│   │   └── video/         # Video processing
+│   └── makefile           # Build automation
+└── tauri-frontend/        # Frontend application
+    ├── src/              # Svelte source code
+    └── src-tauri/        # Tauri configuration
+```
 
 ## Dependencies
 
-This software requires utilizes rust and go as its main languages for it's backend as well as ffprobe and ffmpeg which it uses for the primary screen capture and the video editing pipeline and utilizes the tauri framework combined with svelete for it's frontend 
-`Go version 1.17+`
+- Go 1.17+
+- Rust (latest stable)
+- FFmpeg
+- Tauri
+- Node.js (for frontend development)
+
+## Building
+
+1. Install dependencies:
+   ```bash
+   # Backend
+   cd go-rust-backend
+   make compile_all
+
+   # Frontend
+   cd tauri-frontend
+   pnpm install
+   ```
+
+2. Run the application:
+   ```bash
+   # Backend
+   make run_go
+
+   # Frontend
+   pnpm tauri dev
+   ```
+
+## Planned Features
+
+- Cursor hiding for static cursor
+- Audio recording support
+- Webcam integration
+- GUI for screen and capture area selection
+- Video editing interface
+- Customizable video effects
+
+## Hardware Requirements
+
+The software is optimized for modern hardware, particularly tested on macOS with M3 Max chip. Performance may vary based on your system specifications.

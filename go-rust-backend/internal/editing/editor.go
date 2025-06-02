@@ -8,5 +8,5 @@ import (
 
 func ProcessEffect(mouseHistory []tracking.CursorPosition) {
 	// TODO: Dummy values, need to set this up in the config
-	video.SmoothCursorPath(mouseHistory, 10, 10, 10)
+	video.SmoothCursorPath(mouseHistory, 0.5, 10, 10, 10, 60)
 }
