@@ -41,6 +41,9 @@ func StartMouseTracking(mouseEvents *[]CursorPosition, startingTime time.Time, t
 			currentTime := time.Now()
 			elapsedTime := currentTime.Sub(startingTime)
 
+			// Log click events
+			fmt.Printf("Click detected at position (%d, %d) with timestamp: %v\n", e.X, e.Y, elapsedTime)
+
 			clickEvent := CursorPosition{
 				X:              e.X,
 				Y:              e.Y,

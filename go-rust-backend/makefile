@@ -1,7 +1,7 @@
 # Makefile for Screen Recorder project
 
 # Variables for Rust project
-RUST_PROJECT_PATH := internal/editing/video-editing-engine/video-effects-processor
+RUST_PROJECT_PATH := internal/video/video-editing-engine/video-effects-processor
 RUST_LIB_TARGET_PATH := $(RUST_PROJECT_PATH)/target/release
 RUST_LIB_FILENAME := libvideo_effects_processor.a
 RUST_LIBRARY_FULL_PATH := $(RUST_LIB_TARGET_PATH)/$(RUST_LIB_FILENAME)

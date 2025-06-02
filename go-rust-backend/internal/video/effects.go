@@ -26,7 +26,7 @@ func SmoothCursorPath(rawPoints []tracking.CursorPosition, tension, friction, ma
 		cPoints[i] = C.CPoint{
 			x:            C.double(p.X),
 			y:            C.double(p.Y),
-			timestamp_ms: C.longlong(p.ClickTimeStamp),
+			timestamp_ms: C.longlong(int64(p.ClickTimeStamp)),
 		}
 	}
 

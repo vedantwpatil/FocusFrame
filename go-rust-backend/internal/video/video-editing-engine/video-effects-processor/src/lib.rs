@@ -1,30 +1,5 @@
-#[no_mangle]
-pub extern "C" fn process_image_data_rust(data_ptr: *mut u8, len: u32) {
-    // Unsafe is needed bcause we are dealing with raw pointers from C/Go
-    unsafe {
-        let data_slice = std::slice::from_raw_parts_mut(data_ptr, len as usize);
-
-        // Modify the first byte if the slice isn't empty
-        if !data_slice.is_empty() {
-            data_slice[0] = data_slice[0].wrapping_add(10);
-        }
-    }
-
-    println!("[Rust] process_image_data_rust called, first byte modified (if present).");
-}
-
-// Need this to allow for go code to be able to use this function
-#[no_mangle]
-pub extern "C" fn add(left: i32, right: i32) -> i32 {
-    left + right
-}
-
-#[no_mangle]
-pub extern "C" fn greet_from_rust() {
-    println!("Hello from Rust!");
-}
-
 #[repr(C)]
+#[derive(Clone, Copy, Debug)]
 pub struct CPoint {
     pub x: f32,
     pub y: f32,
@@ -37,10 +12,6 @@ pub struct CSmoothedPath {
     pub len: usize,
 }
 
-fn num_segments(point_chain: &[CPoint], quadruple_size: usize) -> usize {
-    return point_chain.len() - (quadruple_size - 1);
-}
-
 fn catmull_rom_spline(
     p0: CPoint,
     p1: CPoint,
@@ -48,13 +19,80 @@ fn catmull_rom_spline(
     p3: CPoint,
     num_points: usize,
     alpha: f32,
-) {
+) -> Vec<CPoint> {
     let t_0: f32 = 0.0;
     let t_1 = calculate_t_j(t_0, &p0, &p1, alpha);
     let t_2 = calculate_t_j(t_1, &p1, &p2, alpha);
     let t_3 = calculate_t_j(t_2, &p2, &p3, alpha);
 
-    let t = reshape_to_column_vector_f32(linspace(t_1, t_2, num_points));
+    let t_values = linspace(t_1, t_2, num_points);
+    let mut points = Vec::with_capacity(num_points);
+
+    for t in t_values {
+        let a_1 = interpolate_points(t_1, t_0, t, &p0, &p1);
+        let a_2 = interpolate_points(t_2, t_1, t, &p1, &p2);
+        let a_3 = interpolate_points(t_3, t_2, t, &p2, &p3);
+
+        let b_1 = interpolate_points(t_2, t_0, t, &a_1, &a_2);
+        let b_2 = interpolate_points(t_3, t_1, t, &a_2, &a_3);
+
+        let final_point = interpolate_points(t_2, t_1, t, &b_1, &b_2);
+        points.push(final_point);
+    }
+
+    points
+}
+
+pub fn catmull_rom_chain(
+    points: &[CPoint],
+    num_points_per_segment: usize,
+    alpha: f32,
+    quadruple_size: usize,
+) -> Vec<CPoint> {
+    // Need at least quadruple_size points to form one segment.
+    if points.len() < quadruple_size {
+        return Vec::new();
+    }
+
+    // Pre-allocate for efficiency, if possible.
+    let num_segments = points.len() - quadruple_size + 1;
+    let total_capacity = num_segments * num_points_per_segment;
+    let mut all_spline_points = Vec::with_capacity(total_capacity);
+
+    // Use the `windows` iterator to get sliding windows of 4 points.
+    // Each `window` is a slice `&[CPoint]` of length quadruple_size
+    for window in points.windows(quadruple_size) {
+        // Since CPoint is Copy, these are direct copies of the point data.
+        let p0 = window[0];
+        let p1 = window[1];
+        let p2 = window[2];
+        let p3 = window[3];
+
+        let segment_points = catmull_rom_spline(p0, p1, p2, p3, num_points_per_segment, alpha);
+
+        // Extend the main list with the points from the current segment.
+        all_spline_points.extend(segment_points);
+    }
+
+    all_spline_points
+}
+
+// Linear interpolation between two points
+fn interpolate_points(
+    t_end: f32,
+    t_start: f32,
+    t: f32,
+    p_start: &CPoint,
+    p_end: &CPoint,
+) -> CPoint {
+    let weight1 = (t_end - t) / (t_end - t_start);
+    let weight2 = (t - t_start) / (t_end - t_start);
+
+    CPoint {
+        x: weight1 * p_start.x + weight2 * p_end.x,
+        y: weight1 * p_start.y + weight2 * p_end.y,
+        timestamp_ms: -1.0,
+    }
 }
 
 fn linspace(start: f32, end: f32, num_points: usize) -> Vec<f32> {
@@ -76,13 +114,7 @@ fn linspace(start: f32, end: f32, num_points: usize) -> Vec<f32> {
     }
     result
 }
-fn reshape_to_column_vector_f32(flat_vector: Vec<f32>) -> Vec<Vec<f32>> {
-    let mut reshaped_vector = Vec::with_capacity(flat_vector.len());
-    for val in flat_vector {
-        reshaped_vector.push(vec![val]);
-    }
-    reshaped_vector
-}
+
 fn calculate_t_j(t_i: f32, p_i: &CPoint, p_j: &CPoint, alpha: f32) -> f32 {
     let x_i = p_i.x;
     let y_i = p_i.y;
@@ -94,7 +126,7 @@ fn calculate_t_j(t_i: f32, p_i: &CPoint, p_j: &CPoint, alpha: f32) -> f32 {
     let dy = y_j - y_i;
 
     let l = (dx.powi(2) + dy.powi(2)).sqrt();
-    return t_i + l.powf(alpha);
+    t_i + l.powf(alpha)
 }
 
 #[no_mangle]
@@ -134,6 +166,12 @@ pub extern "C" fn smooth_cursor_path(
     //    the memory if Go is supposed to manage it via the returned pointer.
 
     let quadruple_size: usize = 4;
+    // This effects how the smoothness of the lines, either choose 0.5 or 1.0
+    // TODO: Make this personally configurable for the user to choose which they prefer more and
+    // make it a sliding value between 0.0-1.0
+    let alpha = 0.5;
+
+    let smooth = catmull_rom_chain(points_slice, num_points, alpha, quadruple_size);
 
     // Placeholder for actual smoothed path generation
     let mut smoothed_points_vec: Vec<CPoint> = Vec::new();

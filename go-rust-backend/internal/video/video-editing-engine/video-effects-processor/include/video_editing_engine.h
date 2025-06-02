@@ -1,14 +1,15 @@
 #ifndef VIDEO_EDITING_ENGINE_H
 #define VIDEO_EDITING_ENGINE_H
 
-#include <stddef.h> // For size_t
+#include <cstdint>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 
 typedef struct {
-  int x;
-  int y;
-  double timestamp_ms;
+  double x;
+  double y;
+  int64_t timestamp_ms;
 } CPoint;
 
 typedef struct {
@@ -18,7 +19,7 @@ typedef struct {
 
 CSmoothedPath smooth_cursor_path(const CPoint *raw_points, size_t num_points,
                                  double tension, double friction, double mass);
-void free_smoothed_path(CSmoothedPath path);
+CSmoothedPath free_smoothed_path(CSmoothedPath path);
 int32_t add(int32_t a, int32_t b);
 void greet_from_rust(void);
 
