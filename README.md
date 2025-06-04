@@ -1,6 +1,6 @@
 # Focus Frame
 
-A high-performance screen recording application that captures screen content and adds smooth zoom animations on click. Built with Go and Rust for optimal performance, featuring a modern Tauri + Svelte frontend.
+A high-performance screen recording application that captures screen content and adds smooth zoom animations on click. Built with Go and Rust for optimal performance, featuring Tauri + Svelte frontend.
 
 ## Architecture
 
@@ -82,3 +82,5 @@ The application uses a hybrid architecture:
 ## Hardware Requirements
 
 The software is optimized for modern hardware, particularly tested on macOS with M3 Max chip. Performance may vary based on your system specifications.
+
+ 

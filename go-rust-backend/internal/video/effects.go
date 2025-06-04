@@ -34,8 +34,8 @@ func SmoothCursorPath(rawPoints []tracking.CursorPosition, alpha, tension, frict
 
 	numPoints := CalculateFramesInBetweenClicks(rawPoints, frameRate)
 	cNumFramesPerSegment := make([]C.int64_t, len(numPoints))
-	for i, count := range numPoints {
-		cNumFramesPerSegment[i] = C.int64_t(count)
+	for i, value := range numPoints {
+		cNumFramesPerSegment[i] = C.int64_t(value)
 	}
 
 	// 2. Call the Rust function
