@@ -1,76 +1,45 @@
 package video
 
-/*
-#cgo LDFLAGS: -L${SRCDIR}/../../internal/video/video-editing-engine/video-effects-processor/target/release -lvideo_effects_processor
-#include "../../internal/video/video-editing-engine/video-effects-processor/include/video_editing_engine.h"
-*/
-import "C"
-
 import (
-	"time"
-	"unsafe"
+	"math"
 
 	"github.com/vedantwpatil/Screen-Capture/internal/tracking"
 )
 
-func SmoothCursorPath(rawPoints []tracking.CursorPosition, alpha, tension, friction, mass float64, frameRate int16) []tracking.CursorPosition {
-	if len(rawPoints) == 0 {
-		return nil
-	}
+func SmoothCursorPath(rawPoints []tracking.CursorPosition, alpha, tension, friction, mass float64, frameRate int16) {
+}
 
-	// 1. Convert Go slice to C-compatible array
-	cPoints := make([]C.CPoint, len(rawPoints))
-	for i, p := range rawPoints {
-		// p.ClickTimeStamp is time.Duration (int64 nanoseconds)
-		// Rust expects timestamp_ms as f64 (double) representing milliseconds
-		timestampMillis := float64(int64(p.ClickTimeStamp)) / 1_000_000.0
+func GenerateSmoothenedCursorPath(rawPoints []tracking.CursorPosition, alpha, tension, friction, mass float64, frameRate int16) []tracking.CursorPosition {
+	quadrupleSize := 4
+}
 
-		cPoints[i] = C.CPoint{
-			x:            C.float(p.X),
-			y:            C.float(p.Y),
-			timestamp_ms: C.double(timestampMillis),
-		}
-	}
+func Num_segments(pointChain []tracking.CursorPosition, quadrupleSize int) int {
+	return len(pointChain) - (quadrupleSize - 1)
+}
 
-	numPoints := CalculateFramesInBetweenClicks(rawPoints, frameRate)
-	cNumFramesPerSegment := make([]C.int64_t, len(numPoints))
-	for i, value := range numPoints {
-		cNumFramesPerSegment[i] = C.int64_t(value)
-	}
+func CatmullRomSpline(point_0 tracking.CursorPosition, point_1 tracking.CursorPosition, point_2 tracking.CursorPosition, point_3 tracking.CursorPosition) {
+	var knot_0 float64 = 0
 
-	// 2. Call the Rust function
-	cSmoothedPath := C.smooth_cursor_path(
-		(*C.CPoint)(unsafe.Pointer(&cPoints[0])),
-		C.size_t(len(cPoints)),
-		(*C.int64_t)(unsafe.Pointer(&cNumFramesPerSegment[0])),
-		C.size_t(len(cNumFramesPerSegment)),
-		C.float(alpha),
-		C.float(tension),
-		C.float(friction),
-		C.float(mass),
-	)
+	knot_1 := CalculateKnots(knot_0, 0.5, point_0, point_1)
+	knot_2 := CalculateKnots(knot_1, 0.5, point_1, point_2)
+	knot_3 := CalculateKnots(knot_2, 0.5, point_2, point_3)
 
-	// 3. Ensure the memory allocated by Rust is freed eventually
-	defer C.free_smoothed_path(cSmoothedPath)
+	// Finish implementing catmull rom spline cursor path geneartion
+}
 
-	// 4. Convert the C result back to a Go slice
-	var goSmoothedPoints []tracking.CursorPosition
-	if cSmoothedPath.points != nil && cSmoothedPath.len > 0 {
-		cResultSlice := unsafe.Slice(cSmoothedPath.points, cSmoothedPath.len) // Go 1.17+
-		goSmoothedPoints = make([]tracking.CursorPosition, cSmoothedPath.len)
-		for i, cp := range cResultSlice {
-			// cp.timestamp_ms is C.double representing milliseconds
-			// Convert back to time.Duration (nanoseconds)
-			timestampNanos := int64(float64(cp.timestamp_ms) * 1_000_000.0)
+func CalculateKnots(knot_1 float64, alpha float64, point_1, point_2 tracking.CursorPosition) float64 {
+	p1x := point_1.X
+	p1y := point_1.Y
 
-			goSmoothedPoints[i] = tracking.CursorPosition{
-				X:              int16(cp.x), // truncates
-				Y:              int16(cp.y), // truncates
-				ClickTimeStamp: time.Duration(timestampNanos),
-			}
-		}
-	}
-	return goSmoothedPoints
+	p2x := point_2.X
+	p2y := point_2.Y
+
+	dy := p2y - p1y
+	dx := p2x - p1x
+
+	l := (math.Pow(float64(dx), 2) + math.Pow(float64(dy), 2))
+
+	return knot_1 + math.Pow(l, alpha)
 }
 
 func CalculateFramesInBetweenClicks(cursorHistory []tracking.CursorPosition, frameRate int16) []int64 {
