@@ -61,3 +61,18 @@ func StartMouseTracking(mouseEvents *[]CursorPosition, startingTime time.Time, t
 
 	fmt.Println("Hook process stopped.")
 }
+
+// Scale scales a CursorPosition by a scalar.
+func (p CursorPosition) Scale(s float64) CursorPosition {
+	return CursorPosition{X: p.X * int16(s), Y: p.Y * int16(s), ClickTimeStamp: p.ClickTimeStamp}
+}
+
+// Add adds two CursorPositions.
+func (p1 CursorPosition) Add(p2 CursorPosition) CursorPosition {
+	return CursorPosition{X: p1.X + p2.X, Y: p1.Y + p2.Y, ClickTimeStamp: p1.ClickTimeStamp}
+}
+
+// Subtract subtracts p2 from p1.
+func (p1 CursorPosition) Subtract(p2 CursorPosition) CursorPosition {
+	return CursorPosition{X: p1.X - p2.X, Y: p1.Y - p2.Y, ClickTimeStamp: p1.ClickTimeStamp}
+}
