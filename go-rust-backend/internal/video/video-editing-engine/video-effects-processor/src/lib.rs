@@ -1,6 +1,87 @@
 use std::f32;
+use std::ffi::{c_char, CStr};
 use std::fs::File;
 use std::io::{BufWriter, Write};
+
+// C-callable video processing function
+#[no_mangle]
+pub extern "C" fn render_video_with_smoothed_path(
+    input_video_path_ptr: *const c_char,
+    overlay_image_path_ptr: *const c_char,
+    output_video_path_ptr: *const c_char,
+    // --- Inputs for path smoothing ---
+    raw_points_ptr: *const CPoint,
+    raw_points_len: usize,
+    points_per_segment_ptr: *const i64,
+    points_per_segment_len: usize,
+    alpha: f32,
+) -> i32 {
+    // --- Safely convert C strings to Rust strings ---
+    let input_path = unsafe { CStr::from_ptr(input_video_path_ptr) }
+        .to_str()
+        .unwrap();
+    let overlay_path = unsafe { CStr::from_ptr(overlay_image_path_ptr) }
+        .to_str()
+        .unwrap();
+    let output_path = unsafe { CStr::from_ptr(output_video_path_ptr) }
+        .to_str()
+        .unwrap();
+
+    // --- 1. Generate the smoothed path internally ---
+    // We call the existing FFI smoothing function right here.
+    let smoothed_path_ffi = smooth_cursor_path(
+        raw_points_ptr,
+        raw_points_len,
+        points_per_segment_ptr,
+        points_per_segment_len,
+        alpha,
+        0.0,
+        0.0,
+        0.0, // Unused physics params
+    );
+
+    // Check if smoothing failed
+    if smoothed_path_ffi.points.is_null() {
+        return -1; // Indicate smoothing error
+    }
+
+    // Convert the FFI path back to a safe Rust slice for processing
+    let smoothed_points: &[CPoint] =
+        unsafe { std::slice::from_raw_parts(smoothed_path_ffi.points, smoothed_path_ffi.len) };
+
+    // --- 2. Run the video processing logic with the generated path ---
+    let result = _render_video(input_path, overlay_path, output_path, smoothed_points);
+
+    // --- 3. Clean up the memory allocated for the path ---
+    free_smoothed_path(smoothed_path_ffi);
+
+    match result {
+        Ok(_) => 0,   // Success
+        Err(_) => -2, // Indicate video processing error
+    }
+}
+
+// Internal helper function using safe Rust types.
+// This contains the video processing loop.
+fn _render_video(
+    input_path: &str,
+    overlay_path: &str,
+    output_path: &str,
+    path_points: &[CPoint],
+) -> Result<(), Box<dyn std::error::Error>> {
+    // TODO: Finish the logic to render the mouse ontop of the path
+    todo!()
+}
+
+// IMPORTANT: A function to free the memory allocated by `smooth_cursor_path`
+#[no_mangle]
+pub extern "C" fn free_smoothed_path(path: CSmoothedPath) {
+    if !path.points.is_null() {
+        unsafe {
+            let _ = Vec::from_raw_parts(path.points, path.len, path.len);
+        }
+    }
+}
 
 fn export_points_to_csv(filename: &str, points: &[CPoint]) -> std::io::Result<()> {
     let file = File::create(filename)?;
@@ -256,22 +337,8 @@ pub extern "C" fn smooth_cursor_path(
     all_spline_points.shrink_to_fit();
     let len = all_spline_points.len();
     let ptr = all_spline_points.as_mut_ptr();
-    std::mem::forget(all_spline_points); // Prevent Rust from dropping the data
 
     CSmoothedPath { points: ptr, len }
-}
-
-#[no_mangle]
-pub extern "C" fn free_smoothed_path(path: CSmoothedPath) {
-    // This function is crucial for Go to call to free the memory
-    // allocated by Rust and passed back in CSmoothedPath.
-    unsafe {
-        if !path.points.is_null() && path.len > 0 {
-            // Reconstruct the Vec from the raw parts and let it drop,
-            // which deallocates the memory.
-            let _ = Vec::from_raw_parts(path.points, path.len, path.len);
-        }
-    }
 }
 
 #[cfg(test)]
