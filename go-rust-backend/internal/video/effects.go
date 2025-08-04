@@ -18,7 +18,7 @@ func SmoothCursorPath(rawPoints []tracking.CursorPosition, alpha, tension, frict
 		return nil
 	}
 
-	// 1. Convert Go slice to C-compatible array
+	// Convert Go slice to C-compatible array
 	cPoints := make([]C.CPoint, len(rawPoints))
 	for i, p := range rawPoints {
 		// p.ClickTimeStamp is time.Duration (int64 nanoseconds)
@@ -38,7 +38,7 @@ func SmoothCursorPath(rawPoints []tracking.CursorPosition, alpha, tension, frict
 		cNumFramesPerSegment[i] = C.int64_t(value)
 	}
 
-	// 2. Call the Rust function
+	// Call the Rust function
 	cSmoothedPath := C.smooth_cursor_path(
 		(*C.CPoint)(unsafe.Pointer(&cPoints[0])),
 		C.size_t(len(cPoints)),
@@ -50,10 +50,10 @@ func SmoothCursorPath(rawPoints []tracking.CursorPosition, alpha, tension, frict
 		C.float(mass),
 	)
 
-	// 3. Ensure the memory allocated by Rust is freed eventually
+	// Ensure the memory allocated by Rust is freed eventually
 	defer C.free_smoothed_path(cSmoothedPath)
 
-	// 4. Convert the C result back to a Go slice
+	// Convert the C result back to a Go slice
 	var goSmoothedPoints []tracking.CursorPosition
 	if cSmoothedPath.points != nil && cSmoothedPath.len > 0 {
 		cResultSlice := unsafe.Slice(cSmoothedPath.points, cSmoothedPath.len) // Go 1.17+

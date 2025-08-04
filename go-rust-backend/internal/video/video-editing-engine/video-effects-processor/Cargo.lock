@@ -1360,6 +1360,7 @@ checksum = "852e951cb7832cb45cb1169900d19760cfa39b82bc0ea9c0e5a14ae88411c98b"
 name = "video-effects-processor"
 version = "0.1.0"
 dependencies = [
+ "ffmpeg-next",
  "image",
  "ndarray",
  "video-rs",
