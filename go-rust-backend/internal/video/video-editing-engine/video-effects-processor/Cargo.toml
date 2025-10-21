@@ -3,15 +3,10 @@ name = "video-effects-processor"
 version = "0.1.0"
 edition = "2021"
 
-[dependencies]
-image = "0.25"
-ndarray = "0.16.1"
-video-rs = "0.10.3"
-ffmpeg-next = "7.0"
-
 [lib]
 crate-type = ["staticlib"]
 name = "video_effects_processor"
-video-rs = { version = "0.10", features = ["ndarray"] }
-image = "0.24"
-ndarray = "0.15"
+
+[dependencies]
+ffmpeg-next = "8.0.0"
+image = "0.25"

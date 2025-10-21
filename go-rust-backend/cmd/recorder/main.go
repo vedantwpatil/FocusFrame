@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	"github.com/vedantwpatil/Screen-Capture/internal/config"
+	"github.com/vedantwpatil/Screen-Capture/internal/editing"
 	"github.com/vedantwpatil/Screen-Capture/internal/recording"
 )
 
@@ -95,12 +96,38 @@ func (app *Application) getBaseName() (string, error) {
 
 func (app *Application) editVideo() error {
 	if app.recorder == nil || !app.recorder.IsDone() {
-		fmt.Println("No recording available for editing")
+		fmt.Println("No completed recording available for editing")
 		return nil
 	}
 
-	// inputPath := app.recorder.GetOutputPath()
-	// outputPath := inputPath[:len(inputPath)-4] + "-edited.mp4" // Remove .mp4 and add -edited.mp4
+	fmt.Println("\nStarting video processing...")
+
+	inputPath := app.recorder.GetOutputPath()
+	outputPath := inputPath[:len(inputPath)-4] + "-edited.mp4"
+	mouseHistory := app.recorder.GetCursorHistory()
+
+	fmt.Printf("Input: %s\n", inputPath)
+	fmt.Printf("Output: %s\n", outputPath)
+	fmt.Printf("Mouse events captured: %d\n", len(mouseHistory))
+
+	// Check if we have enough mouse data
+	if len(mouseHistory) < 4 {
+		return fmt.Errorf("not enough mouse data for smoothing (need at least 4 points, got %d)", len(mouseHistory))
+	}
+
+	// Process the video
+	err := editing.ProcessEffect(
+		inputPath,
+		outputPath,
+		mouseHistory,
+		int16(app.config.Recording.TargetFPS),
+	)
+	if err != nil {
+		return fmt.Errorf("video processing failed: %w", err)
+	}
+
+	fmt.Println("\n✨ Video processing complete!")
+	fmt.Printf("📁 Edited video saved to: %s\n", outputPath)
 
 	return nil
 }

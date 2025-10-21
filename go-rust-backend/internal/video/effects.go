@@ -1,30 +1,57 @@
 package video
 
 /*
-#cgo LDFLAGS: -L${SRCDIR}/../../internal/video/video-editing-engine/video-effects-processor/target/release -lvideo_effects_processor
-#include "../../internal/video/video-editing-engine/video-effects-processor/include/video_editing_engine.h"
+#cgo pkg-config: libavcodec libavformat libavutil libswscale libswresample libavfilter libavdevice
+#cgo LDFLAGS: -L${SRCDIR}/video-editing-engine/video-effects-processor/target/release -lvideo_effects_processor
+#include <stdlib.h>
+#include "video-editing-engine/video-effects-processor/include/video_editing_engine.h"
+
+extern void goProgressCallback(float percent);
 */
 import "C"
 
 import (
-	"time"
+	"fmt"
 	"unsafe"
 
 	"github.com/vedantwpatil/Screen-Capture/internal/tracking"
 )
 
-func SmoothCursorPath(rawPoints []tracking.CursorPosition, alpha, tension, friction, mass float64, frameRate int16) []tracking.CursorPosition {
-	if len(rawPoints) == 0 {
-		return nil
+var currentProgressHandler func(float32)
+
+//export goProgressCallback
+func goProgressCallback(percent C.float) {
+	if currentProgressHandler != nil {
+		currentProgressHandler(float32(percent))
+	}
+}
+
+func ProcessVideoWithCursor(
+	inputVideoPath string,
+	outputVideoPath string,
+	cursorSpritePath string,
+	mouseHistory []tracking.CursorPosition,
+	config VideoConfig,
+	progressHandler func(float32),
+) error {
+	if len(mouseHistory) == 0 {
+		return fmt.Errorf("no mouse history provided")
 	}
 
-	// Convert Go slice to C-compatible array
-	cPoints := make([]C.CPoint, len(rawPoints))
-	for i, p := range rawPoints {
-		// p.ClickTimeStamp is time.Duration (int64 nanoseconds)
-		// Rust expects timestamp_ms as f64 (double) representing milliseconds
-		timestampMillis := float64(int64(p.ClickTimeStamp)) / 1_000_000.0
+	currentProgressHandler = progressHandler
 
+	cInputPath := C.CString(inputVideoPath)
+	defer C.free(unsafe.Pointer(cInputPath))
+
+	cOutputPath := C.CString(outputVideoPath)
+	defer C.free(unsafe.Pointer(cOutputPath))
+
+	cCursorPath := C.CString(cursorSpritePath)
+	defer C.free(unsafe.Pointer(cCursorPath))
+
+	cPoints := make([]C.CPoint, len(mouseHistory))
+	for i, p := range mouseHistory {
+		timestampMillis := float64(p.ClickTimeStamp.Nanoseconds()) / 1_000_000.0
 		cPoints[i] = C.CPoint{
 			x:            C.float(p.X),
 			y:            C.float(p.Y),
@@ -32,57 +59,47 @@ func SmoothCursorPath(rawPoints []tracking.CursorPosition, alpha, tension, frict
 		}
 	}
 
-	numPoints := CalculateFramesInBetweenClicks(rawPoints, frameRate)
-	cNumFramesPerSegment := make([]C.int64_t, len(numPoints))
-	for i, value := range numPoints {
-		cNumFramesPerSegment[i] = C.int64_t(value)
+	cConfig := C.VideoProcessingConfig{
+		smoothing_alpha: C.float(config.SmoothingAlpha),
+		spring_tension:  C.float(config.SpringTension),
+		spring_friction: C.float(config.SpringFriction),
+		spring_mass:     C.float(config.SpringMass),
+		frame_rate:      C.int32_t(config.FrameRate),
 	}
 
-	// Call the Rust function
-	cSmoothedPath := C.smooth_cursor_path(
+	result := C.process_video_with_cursor(
+		cInputPath,
+		cOutputPath,
+		cCursorPath,
 		(*C.CPoint)(unsafe.Pointer(&cPoints[0])),
 		C.size_t(len(cPoints)),
-		(*C.int64_t)(unsafe.Pointer(&cNumFramesPerSegment[0])),
-		C.size_t(len(cNumFramesPerSegment)),
-		C.float(alpha),
-		C.float(tension),
-		C.float(friction),
-		C.float(mass),
+		&cConfig,
+		C.ProgressCallback(C.goProgressCallback),
 	)
 
-	// Ensure the memory allocated by Rust is freed eventually
-	defer C.free_smoothed_path(cSmoothedPath)
+	currentProgressHandler = nil
 
-	// Convert the C result back to a Go slice
-	var goSmoothedPoints []tracking.CursorPosition
-	if cSmoothedPath.points != nil && cSmoothedPath.len > 0 {
-		cResultSlice := unsafe.Slice(cSmoothedPath.points, cSmoothedPath.len) // Go 1.17+
-		goSmoothedPoints = make([]tracking.CursorPosition, cSmoothedPath.len)
-		for i, cp := range cResultSlice {
-			// cp.timestamp_ms is C.double representing milliseconds
-			// Convert back to time.Duration (nanoseconds)
-			timestampNanos := int64(float64(cp.timestamp_ms) * 1_000_000.0)
-
-			goSmoothedPoints[i] = tracking.CursorPosition{
-				X:              int16(cp.x), // truncates
-				Y:              int16(cp.y), // truncates
-				ClickTimeStamp: time.Duration(timestampNanos),
-			}
-		}
+	if result != 0 {
+		return fmt.Errorf("video processing failed with error code: %d", result)
 	}
-	return goSmoothedPoints
+
+	return nil
 }
 
-func CalculateFramesInBetweenClicks(cursorHistory []tracking.CursorPosition, frameRate int16) []int64 {
-	var numFrames []int64
+type VideoConfig struct {
+	SmoothingAlpha float64
+	SpringTension  float64
+	SpringFriction float64
+	SpringMass     float64
+	FrameRate      int32
+}
 
-	for i := range len(cursorHistory) - 1 {
-		clickTime := cursorHistory[i].ClickTimeStamp
-		nextClickTime := cursorHistory[i+1].ClickTimeStamp
-
-		amtTime := nextClickTime - clickTime
-		amtFrames := frameRate * int16(amtTime)
-		numFrames = append(numFrames, int64(amtFrames))
+func DefaultVideoConfig(frameRate int32) VideoConfig {
+	return VideoConfig{
+		SmoothingAlpha: 0.5,
+		SpringTension:  10.0,
+		SpringFriction: 10.0,
+		SpringMass:     10.0,
+		FrameRate:      frameRate,
 	}
-	return numFrames
 }
