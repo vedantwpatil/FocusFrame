@@ -1,7 +1,7 @@
-use std::process::Command;
-use tauri::State;
-use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
+use std::process::Command;
+use std::sync::Mutex;
+use tauri::State;
 
 #[derive(Default)]
 struct RecordingState(Mutex<Option<std::process::Child>>);
@@ -13,12 +13,9 @@ struct Recording {
 }
 
 #[tauri::command]
-async fn start_recording(
-    name: &str, 
-    state: State<'_, RecordingState>
-) -> Result<(), String> {
+async fn start_recording(name: &str, state: State<'_, RecordingState>) -> Result<(), String> {
     let output_path = format!("output/{}.mp4", name);
-    
+
     let mut child = Command::new("./go-backend/bin/screen_recorder")
         .arg(&output_path)
         .spawn()
@@ -38,9 +35,8 @@ async fn stop_recording(state: State<'_, RecordingState>) -> Result<(), String> 
 
 #[tauri::command]
 async fn get_recordings() -> Result<Vec<Recording>, String> {
-    let entries = std::fs::read_dir("output")
-        .map_err(|e| e.to_string())?;
-    
+    let entries = std::fs::read_dir("output").map_err(|e| e.to_string())?;
+
     let mut recordings = Vec::new();
     for entry in entries {
         if let Ok(entry) = entry {
@@ -54,7 +50,7 @@ async fn get_recordings() -> Result<Vec<Recording>, String> {
             }
         }
     }
-    
+
     Ok(recordings)
 }
 

@@ -4,6 +4,7 @@ use ffmpeg_next::format::{input, output};
 use ffmpeg_next::media::Type;
 use ffmpeg_next::software::scaling::{Context as ScalerContext, Flags};
 use ffmpeg_next::util::frame::video::Video;
+use ffmpeg_next::util::mathematics::rescale::Rescale;
 use image::{Rgba, RgbaImage};
 use std::f32;
 use std::ffi::{c_char, c_int, CStr};
@@ -70,7 +71,7 @@ pub unsafe extern "C" fn process_video_with_cursor(
     }
 
     // Convert C strings to Rust strings
-    let input_path = match unsafe { CStr::from_ptr(input_video_path) }.to_str() {
+    let input_path = match CStr::from_ptr(input_video_path).to_str() {
         Ok(s) => s,
         Err(e) => {
             eprintln!("Error: Invalid input_video_path UTF-8: {}", e);
@@ -78,7 +79,7 @@ pub unsafe extern "C" fn process_video_with_cursor(
         }
     };
 
-    let output_path = match unsafe { CStr::from_ptr(output_video_path) }.to_str() {
+    let output_path = match CStr::from_ptr(output_video_path).to_str() {
         Ok(s) => s,
         Err(e) => {
             eprintln!("Error: Invalid output_video_path UTF-8: {}", e);
@@ -86,7 +87,7 @@ pub unsafe extern "C" fn process_video_with_cursor(
         }
     };
 
-    let cursor_path = match unsafe { CStr::from_ptr(cursor_sprite_path) }.to_str() {
+    let cursor_path = match CStr::from_ptr(cursor_sprite_path).to_str() {
         Ok(s) => s,
         Err(e) => {
             eprintln!("Error: Invalid cursor_sprite_path UTF-8: {}", e);
@@ -95,9 +96,8 @@ pub unsafe extern "C" fn process_video_with_cursor(
     };
 
     // Convert raw pointers to slices
-    let cursor_points =
-        unsafe { std::slice::from_raw_parts(raw_cursor_points, raw_cursor_points_len) };
-    let cfg = unsafe { &*config };
+    let cursor_points = std::slice::from_raw_parts(raw_cursor_points, raw_cursor_points_len);
+    let cfg = &*config;
 
     // Report initial progress
     if let Some(cb) = progress_callback {
@@ -150,30 +150,74 @@ fn smooth_cursor_path_internal(
         return Err("Need at least 4 cursor points for smoothing".to_string());
     }
 
-    // Calculate number of interpolation points per segment
     let frame_counts = calculate_frames_between_points(cursor_points, config.frame_rate);
-
     if frame_counts.len() != cursor_points.len() - 1 {
         return Err("Frame count mismatch".to_string());
     }
 
+    // Duplicate endpoints to cover [p0,p1] and [p_{n-2},p_{n-1}]
+    let n = cursor_points.len();
+    let mut ext: Vec<CPoint> = Vec::with_capacity(n + 2);
+    ext.push(cursor_points[0]);
+    ext.extend_from_slice(cursor_points);
+    ext.push(cursor_points[n - 1]);
+
     let total_expected_points: usize = frame_counts.iter().sum();
     let mut all_spline_points: Vec<CPoint> = Vec::with_capacity(total_expected_points);
 
-    // Process each segment using Catmull-Rom splines
-    let quadruple_size = 4;
-    for (i, window) in cursor_points.windows(quadruple_size).enumerate() {
-        let p0 = window[0];
-        let p1 = window[1];
-        let p2 = window[2];
-        let p3 = window[3];
+    eprintln!(
+        "[spline] raw_n={}, total_expected_samples={}, fps={}",
+        n, total_expected_points, config.frame_rate
+    );
 
-        let num_points = frame_counts[i + 1]; // Adjusted index
-        if num_points > 0 {
-            let segment_points =
-                catmull_rom_spline(p0, p1, p2, p3, num_points, config.smoothing_alpha);
-            all_spline_points.extend(segment_points);
+    for seg in 0..(n - 1) {
+        let p0 = ext[seg];
+        let p1 = ext[seg + 1];
+        let p2 = ext[seg + 2];
+        let p3 = ext[seg + 3];
+
+        let num_points = frame_counts[seg];
+        if num_points == 0 {
+            continue;
         }
+
+        let mut segment_points =
+            catmull_rom_spline(p0, p1, p2, p3, num_points, config.smoothing_alpha);
+
+        // Force time-correct timestamps across [p1, p2]
+        let dt = p2.timestamp_ms - p1.timestamp_ms;
+        for (k, pt) in segment_points.iter_mut().enumerate() {
+            let ta = if num_points > 1 {
+                k as f64 / (num_points as f64 - 1.0)
+            } else {
+                0.0
+            };
+            pt.timestamp_ms = p1.timestamp_ms + ta * dt;
+        }
+
+        if seg < 2 {
+            // Debug first few segments
+            let t0 = segment_points
+                .first()
+                .map(|p| p.timestamp_ms)
+                .unwrap_or(0.0);
+            let t1 = segment_points.last().map(|p| p.timestamp_ms).unwrap_or(0.0);
+            eprintln!(
+                "[spline] seg={} num_points={} span_ms=[{:.3},{:.3}] raw_span=[{:.3},{:.3}]",
+                seg, num_points, t0, t1, p1.timestamp_ms, p2.timestamp_ms
+            );
+        }
+
+        all_spline_points.extend(segment_points);
+    }
+
+    if let (Some(first), Some(last)) = (all_spline_points.first(), all_spline_points.last()) {
+        eprintln!(
+            "[spline] out_len={}, t_min={:.3} ms, t_max={:.3} ms",
+            all_spline_points.len(),
+            first.timestamp_ms,
+            last.timestamp_ms
+        );
     }
 
     Ok(all_spline_points)
@@ -181,14 +225,16 @@ fn smooth_cursor_path_internal(
 
 fn calculate_frames_between_points(cursor_points: &[CPoint], frame_rate: i32) -> Vec<usize> {
     let mut frame_counts = Vec::with_capacity(cursor_points.len().saturating_sub(1));
-
     for i in 0..cursor_points.len().saturating_sub(1) {
         let time_delta_ms = cursor_points[i + 1].timestamp_ms - cursor_points[i].timestamp_ms;
         let time_delta_seconds = time_delta_ms / 1000.0;
         let num_frames = (time_delta_seconds * frame_rate as f64).round() as usize;
+        eprintln!(
+            "[frames] seg={} dt_ms={:.3} fps={} frames={}",
+            i, time_delta_ms, frame_rate, num_frames
+        );
         frame_counts.push(num_frames);
     }
-
     frame_counts
 }
 
@@ -226,8 +272,8 @@ fn render_video_with_overlay(
     let codec = ffmpeg::encoder::find(octx.format().codec(output_path, Type::Video))
         .ok_or("Encoder not found")?;
 
-    // KEY: Store encoder_time_base for later use
-    let encoder_time_base = ffmpeg::Rational::new(1, 60);
+    // Match encoder time base to input for simpler reasoning
+    let encoder_time_base = input_time_base;
 
     let (mut encoder, ostream_index) = {
         let mut encoder_builder = CodecContext::new_with_codec(codec).encoder().video()?;
@@ -284,19 +330,40 @@ fn render_video_with_overlay(
     let mut frame_number: i64 = 0;
     let mut processed_frames = 0;
 
-    // KEY FIX: Use encoder_time_base (1/60) directly, not output_time_base
-    // Calculate PTS increment: for 60 fps at time_base 1/60, increment = 1
-    let pts_increment = if frame_rate.numerator() > 0 && frame_rate.denominator() > 0 {
-        // frames per second = numerator / denominator
-        // time units per frame = time_base / frame_rate
-        // = (1/60) / (60/1) = 1/60 * 1/60 = 1
-        (encoder_time_base.denominator() as i64 * frame_rate.denominator() as i64)
-            / (encoder_time_base.numerator() as i64 * frame_rate.numerator() as i64)
+    // Per-frame duration in encoder_time_base = av_rescale_q(1, 1/fps, encoder_time_base)
+    let frame_duration_pts: i64 = if frame_rate.numerator() > 0 && frame_rate.denominator() > 0 {
+        1_i64.rescale(
+            ffmpeg::Rational(frame_rate.denominator(), frame_rate.numerator()),
+            encoder_time_base,
+        )
     } else {
-        1 // Fallback to 1 time unit per frame
+        1
     };
 
-    let mut next_pts: i64 = 0;
+    // Running PTS in encoder_time_base; do not override packet PTS/DTS
+    let mut cur_pts: i64 = 0;
+
+    // One-time alignment: make video ms share origin with cursor ms
+    let mut align_offset_ms: Option<f64> = None;
+
+    let fallback_ms_from_frame_index = |idx: i64| -> f64 {
+        if frame_rate.numerator() > 0 && frame_rate.denominator() > 0 {
+            (idx as f64)
+                * (1000.0 * frame_rate.denominator() as f64 / frame_rate.numerator() as f64)
+        } else {
+            (idx as f64) * (1000.0 / 60.0)
+        }
+    };
+
+    eprintln!(
+        "[render] enc_tb={}/{} fps={}/{}",
+        encoder_time_base.numerator(),
+        encoder_time_base.denominator(),
+        frame_rate.numerator(),
+        frame_rate.denominator()
+    );
+
+    let mut first_n_debug = 32;
 
     for (stream, packet) in ictx.packets() {
         if stream.index() == video_stream_index {
@@ -304,18 +371,46 @@ fn render_video_with_overlay(
 
             let mut decoded_frame = Video::empty();
             while decoder.receive_frame(&mut decoded_frame).is_ok() {
-                let original_timestamp = decoded_frame.timestamp();
-                let timestamp_ms = if let Some(ts) = original_timestamp {
-                    ts as f64 * 1000.0 * f64::from(input_time_base)
+                let ts_opt = decoded_frame.timestamp(); // best-effort mapped by crate
+                let frame_ms_unaligned: f64 = if let Some(ts) = ts_opt {
+                    ts.rescale(input_time_base, ffmpeg::Rational(1, 1000)) as f64
                 } else {
-                    0.0
+                    fallback_ms_from_frame_index(frame_number)
                 };
+
+                if align_offset_ms.is_none() {
+                    let path0_ms = smoothed_path.first().map(|p| p.timestamp_ms).unwrap_or(0.0);
+                    align_offset_ms = Some(path0_ms - frame_ms_unaligned);
+                    eprintln!(
+                        "[render] align_offset_ms set to {:.3} (path0={:.3}, f0={:.3})",
+                        align_offset_ms.unwrap(),
+                        path0_ms,
+                        frame_ms_unaligned
+                    );
+                }
+                let aligned_ms = frame_ms_unaligned + align_offset_ms.unwrap_or(0.0);
+
+                if first_n_debug > 0 {
+                    eprintln!(
+                        "[render] frame={} pts={} frame_ms={:.3} aligned_ms={:.3}",
+                        frame_number,
+                        ts_opt
+                            .map(|t| t.to_string())
+                            .unwrap_or_else(|| "None".into()),
+                        frame_ms_unaligned,
+                        aligned_ms
+                    );
+                    first_n_debug -= 1;
+                }
 
                 let mut rgb_frame = Video::empty();
                 input_to_rgb_scaler.run(&decoded_frame, &mut rgb_frame)?;
-                rgb_frame.set_pts(Some(frame_number));
+                rgb_frame.set_pts(Some(cur_pts));
 
-                if let Some(pos) = find_position_for_timestamp(smoothed_path, timestamp_ms) {
+                let mut clamped = false;
+                if let Some(pos) =
+                    find_position_for_timestamp_dbg(smoothed_path, aligned_ms, &mut clamped)
+                {
                     overlay_image_on_rgb_frame(
                         &mut rgb_frame,
                         &overlay_img,
@@ -323,25 +418,29 @@ fn render_video_with_overlay(
                         pos.y as i32,
                     );
                 }
+                if clamped && frame_number % 60 == 0 {
+                    eprintln!("[render] timestamp clamped at frame {}", frame_number);
+                }
 
                 let mut output_frame = Video::empty();
                 rgb_to_output_scaler.run(&rgb_frame, &mut output_frame)?;
-                output_frame.set_pts(Some(frame_number));
-
+                output_frame.set_pts(Some(cur_pts));
                 encoder.send_frame(&output_frame)?;
-
                 let mut encoded_packet = ffmpeg::Packet::empty();
                 while encoder.receive_packet(&mut encoded_packet).is_ok() {
                     encoded_packet.set_stream(ostream_index);
-
-                    // Set timestamps directly in encoder_time_base
-                    encoded_packet.set_pts(Some(next_pts));
-                    encoded_packet.set_dts(Some(next_pts));
-
+                    let ost_tb = octx
+                        .stream(ostream_index)
+                        .ok_or("Output stream not found")?
+                        .time_base();
+                    if ost_tb != encoder_time_base {
+                        encoded_packet.rescale_ts(encoder_time_base, ost_tb);
+                    }
                     encoded_packet.write_interleaved(&mut octx)?;
-                    next_pts += pts_increment;
                 }
 
+                // Advance once per submitted frame:
+                cur_pts += frame_duration_pts;
                 frame_number += 1;
                 processed_frames += 1;
 
@@ -359,36 +458,59 @@ fn render_video_with_overlay(
     decoder.send_eof()?;
     let mut decoded_frame = Video::empty();
     while decoder.receive_frame(&mut decoded_frame).is_ok() {
-        let original_timestamp = decoded_frame.timestamp();
-        let timestamp_ms = if let Some(ts) = original_timestamp {
-            ts as f64 * 1000.0 * f64::from(input_time_base)
+        let ts_opt = decoded_frame.timestamp();
+        let frame_ms_unaligned: f64 = if let Some(ts) = ts_opt {
+            ts.rescale(input_time_base, ffmpeg::Rational(1, 1000)) as f64
         } else {
-            0.0
+            fallback_ms_from_frame_index(frame_number)
         };
+
+        if align_offset_ms.is_none() {
+            let path0_ms = smoothed_path.first().map(|p| p.timestamp_ms).unwrap_or(0.0);
+            align_offset_ms = Some(path0_ms - frame_ms_unaligned);
+            eprintln!(
+                "[render] align_offset_ms set (flush) to {:.3}",
+                align_offset_ms.unwrap()
+            );
+        }
+        let aligned_ms = frame_ms_unaligned + align_offset_ms.unwrap_or(0.0);
 
         let mut rgb_frame = Video::empty();
         input_to_rgb_scaler.run(&decoded_frame, &mut rgb_frame)?;
-        rgb_frame.set_pts(Some(frame_number));
+        rgb_frame.set_pts(Some(cur_pts));
 
-        if let Some(pos) = find_position_for_timestamp(smoothed_path, timestamp_ms) {
+        let mut clamped = false;
+        if let Some(pos) = find_position_for_timestamp_dbg(smoothed_path, aligned_ms, &mut clamped)
+        {
             overlay_image_on_rgb_frame(&mut rgb_frame, &overlay_img, pos.x as i32, pos.y as i32);
+        }
+        if clamped {
+            eprintln!(
+                "[render] timestamp clamped during decoder flush at frame {}",
+                frame_number
+            );
         }
 
         let mut output_frame = Video::empty();
         rgb_to_output_scaler.run(&rgb_frame, &mut output_frame)?;
-        output_frame.set_pts(Some(frame_number));
+        output_frame.set_pts(Some(cur_pts));
 
         encoder.send_frame(&output_frame)?;
 
         let mut encoded_packet = ffmpeg::Packet::empty();
         while encoder.receive_packet(&mut encoded_packet).is_ok() {
             encoded_packet.set_stream(ostream_index);
-            encoded_packet.set_pts(Some(next_pts));
-            encoded_packet.set_dts(Some(next_pts));
+            let ost_tb = octx
+                .stream(ostream_index)
+                .ok_or("Output stream not found")?
+                .time_base();
+            if ost_tb != encoder_time_base {
+                encoded_packet.rescale_ts(encoder_time_base, ost_tb);
+            }
             encoded_packet.write_interleaved(&mut octx)?;
-            next_pts += pts_increment;
         }
 
+        cur_pts += frame_duration_pts;
         frame_number += 1;
     }
 
@@ -397,17 +519,72 @@ fn render_video_with_overlay(
     let mut encoded_packet = ffmpeg::Packet::empty();
     while encoder.receive_packet(&mut encoded_packet).is_ok() {
         encoded_packet.set_stream(ostream_index);
-        encoded_packet.set_pts(Some(next_pts));
-        encoded_packet.set_dts(Some(next_pts));
+        let ost_tb = octx
+            .stream(ostream_index)
+            .ok_or("Output stream not found")?
+            .time_base();
+        if ost_tb != encoder_time_base {
+            encoded_packet.rescale_ts(encoder_time_base, ost_tb);
+        }
         encoded_packet.write_interleaved(&mut octx)?;
-        next_pts += pts_increment;
     }
 
     octx.write_trailer()?;
+    eprintln!(
+        "[render] done frames={} approx_dur_s~{:.3}",
+        frame_number,
+        (cur_pts as f64)
+            * (encoder_time_base.numerator() as f64 / encoder_time_base.denominator() as f64)
+    );
     Ok(())
 }
 
-// New function for RGB24 overlay
+fn find_position_for_timestamp_dbg(
+    path: &[CPoint],
+    timestamp_ms: f64,
+    clamped: &mut bool,
+) -> Option<CPoint> {
+    *clamped = false;
+    if path.is_empty() {
+        return None;
+    }
+    if path.len() == 1 {
+        *clamped = true;
+        return path.first().copied();
+    }
+
+    if let Some(index) = path
+        .windows(2)
+        .position(|w| timestamp_ms >= w[0].timestamp_ms && timestamp_ms <= w[1].timestamp_ms)
+    {
+        let p1 = &path[index];
+        let p2 = &path[index + 1];
+        let duration = p2.timestamp_ms - p1.timestamp_ms;
+
+        let t = if duration > 0.0 {
+            (timestamp_ms - p1.timestamp_ms) / duration
+        } else {
+            0.0
+        };
+
+        let x = p1.x as f64 + t * (p2.x as f64 - p1.x as f64);
+        let y = p1.y as f64 + t * (p2.y as f64 - p1.y as f64);
+
+        return Some(CPoint {
+            x: x as f32,
+            y: y as f32,
+            timestamp_ms,
+        });
+    }
+
+    *clamped = true;
+    if timestamp_ms < path[0].timestamp_ms {
+        path.first().copied()
+    } else {
+        path.last().copied()
+    }
+}
+
 fn overlay_image_on_rgb_frame(frame: &mut Video, overlay: &RgbaImage, x_pos: i32, y_pos: i32) {
     let frame_w = frame.width() as i32;
     let frame_h = frame.height() as i32;
@@ -425,17 +602,14 @@ fn overlay_image_on_rgb_frame(frame: &mut Video, overlay: &RgbaImage, x_pos: i32
                 let pixel_overlay = overlay.get_pixel(x_overlay, y_overlay);
                 let Rgba([r, g, b, a]) = *pixel_overlay;
 
-                // Simple alpha blending
                 if a > 0 {
                     let frame_idx = (y_frame as usize * stride) + (x_frame as usize * 3);
                     if frame_idx + 2 < frame_data.len() {
                         if a == 255 {
-                            // Fully opaque - direct copy
                             frame_data[frame_idx] = r;
                             frame_data[frame_idx + 1] = g;
                             frame_data[frame_idx + 2] = b;
                         } else {
-                            // Alpha blending
                             let alpha_f = a as f32 / 255.0;
                             let inv_alpha = 1.0 - alpha_f;
 
@@ -456,6 +630,7 @@ fn overlay_image_on_rgb_frame(frame: &mut Video, overlay: &RgbaImage, x_pos: i32
     }
 }
 
+// Use aligned_ms from the video frame and search the path for the containing interval
 fn find_position_for_timestamp(path: &[CPoint], timestamp_ms: f64) -> Option<CPoint> {
     if path.is_empty() {
         return None;

@@ -10,3 +10,4 @@ name = "video_effects_processor"
 [dependencies]
 ffmpeg-next = "8.0.0"
 image = "0.25"
+thiserror = "2.0.17"
