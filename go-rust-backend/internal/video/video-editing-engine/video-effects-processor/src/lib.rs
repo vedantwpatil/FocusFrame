@@ -15,6 +15,9 @@ mod constants;
 mod types;
 mod utils;
 
+#[cfg(test)]
+mod tests;
+
 use crate::constants::*;
 #[cfg(feature = "legacy-api")]
 use crate::types::CSmoothedPath;
@@ -57,7 +60,7 @@ fn ensure_ffmpeg_init() -> Result<(), ffmpeg::Error> {
 ///
 /// # Returns
 /// Tuple of (stiffness k, damping c, mass m) for spring physics simulation.
-fn derive_spring_params(responsiveness: f32, smoothness: f32) -> (f64, f64, f64) {
+pub(crate) fn derive_spring_params(responsiveness: f32, smoothness: f32) -> (f64, f64, f64) {
     let responsiveness = responsiveness.clamp(0.0, 1.0) as f64;
     let smoothness = smoothness.clamp(0.0, 1.0) as f64;
 
@@ -830,7 +833,7 @@ fn render_video_with_overlay(
 /// Uses velocity data from PathPoints for C1 continuity at segment boundaries.
 ///
 /// Returns (x, y) position or None if path is empty.
-fn find_position_for_timestamp_hermite(
+pub(crate) fn find_position_for_timestamp_hermite(
     path: &[PathPoint],
     timestamp_ms: f64,
     clamped: &mut bool,
@@ -942,7 +945,7 @@ fn overlay_image_on_rgb_frame(frame: &mut Video, overlay: &RgbaImage, x_pos: i32
 // Catmull-Rom Spline Implementation
 // ============================================================================
 
-fn catmull_rom_spline(
+pub(crate) fn catmull_rom_spline(
     p0: CPoint,
     p1: CPoint,
     p2: CPoint,
@@ -970,7 +973,7 @@ fn catmull_rom_spline(
     points
 }
 
-fn interpolate_points(
+pub(crate) fn interpolate_points(
     t_end: f32,
     t_start: f32,
     t: f32,
@@ -998,13 +1001,13 @@ fn interpolate_points(
     }
 }
 
-fn calculate_t_j(t_i: f32, p_i: &CPoint, p_j: &CPoint, alpha: f32) -> f32 {
+pub(crate) fn calculate_t_j(t_i: f32, p_i: &CPoint, p_j: &CPoint, alpha: f32) -> f32 {
     let dx = p_j.x - p_i.x;
     let dy = p_j.y - p_i.y;
     t_i + (dx.powi(2) + dy.powi(2)).sqrt().powf(alpha)
 }
 
-fn linspace(start: f32, end: f32, num_points: usize) -> Vec<f32> {
+pub(crate) fn linspace(start: f32, end: f32, num_points: usize) -> Vec<f32> {
     if num_points == 0 {
         return Vec::new();
     }
@@ -1021,7 +1024,7 @@ fn linspace(start: f32, end: f32, num_points: usize) -> Vec<f32> {
 
 /// Applies spring physics to smooth cursor path, outputting both position and velocity.
 /// Velocity is used for Hermite interpolation to ensure C1 continuity.
-fn spring_follow_path(points: &[CPoint], config: &VideoProcessingConfig) -> Vec<PathPoint> {
+pub(crate) fn spring_follow_path(points: &[CPoint], config: &VideoProcessingConfig) -> Vec<PathPoint> {
     if points.is_empty() {
         return Vec::new();
     }
@@ -1095,7 +1098,7 @@ fn spring_follow_path(points: &[CPoint], config: &VideoProcessingConfig) -> Vec<
 // Arc-length reparameterization and trapezoidal speed profile targets
 // ============================================================================
 
-fn cumulative_lengths(points: &[CPoint]) -> Vec<f64> {
+pub(crate) fn cumulative_lengths(points: &[CPoint]) -> Vec<f64> {
     let mut cum: Vec<f64> = Vec::with_capacity(points.len());
     let mut s = 0.0f64;
     for (i, p) in points.iter().enumerate() {
@@ -1112,7 +1115,7 @@ fn cumulative_lengths(points: &[CPoint]) -> Vec<f64> {
     cum
 }
 
-fn position_at_distance(points: &[CPoint], cum: &[f64], s_query: f64) -> (f32, f32) {
+pub(crate) fn position_at_distance(points: &[CPoint], cum: &[f64], s_query: f64) -> (f32, f32) {
     if points.is_empty() {
         return (0.0, 0.0);
     }
@@ -1146,7 +1149,7 @@ fn position_at_distance(points: &[CPoint], cum: &[f64], s_query: f64) -> (f32, f
 
 /// Generate targets so that each raw cursor point (click waypoint) is reached at its original timestamp.
 /// Maps raw points onto the spline's arc-length, then builds trapezoidal/triangular speed profiles.
-fn generate_targets_with_click_constraints(
+pub(crate) fn generate_targets_with_click_constraints(
     raw_points: &[CPoint],
     spline_points: &[CPoint],
     _base_ts_ms: f64,
