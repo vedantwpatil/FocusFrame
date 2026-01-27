@@ -1155,6 +1155,7 @@ version = "0.1.0"
 dependencies = [
  "ffmpeg-next",
  "image",
+ "log",
  "thiserror 2.0.17",
 ]
 

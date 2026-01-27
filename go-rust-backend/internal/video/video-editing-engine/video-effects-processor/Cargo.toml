@@ -7,7 +7,14 @@ edition = "2021"
 crate-type = ["staticlib"]
 name = "video_effects_processor"
 
+[features]
+default = []
+# Enable legacy FFI functions (smooth_cursor_path, free_smoothed_path)
+# These are deprecated and will be removed in a future version
+legacy-api = []
+
 [dependencies]
 ffmpeg-next = "8.0.0"
 image = "0.25"
+log = "0.4"
 thiserror = "2.0.17"

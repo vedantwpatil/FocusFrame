@@ -61,10 +61,10 @@ func ProcessVideoWithCursor(
 
 	cConfig := C.VideoProcessingConfig{
 		smoothing_alpha: C.float(config.SmoothingAlpha),
-		spring_tension:  C.float(config.SpringTension),
-		spring_friction: C.float(config.SpringFriction),
-		spring_mass:     C.float(config.SpringMass),
+		responsiveness:  C.float(config.Responsiveness),
+		smoothness:      C.float(config.Smoothness),
 		frame_rate:      C.int32_t(config.FrameRate),
+		log_level:       C.int32_t(config.LogLevel),
 	}
 
 	result := C.process_video_with_cursor(
@@ -86,20 +86,31 @@ func ProcessVideoWithCursor(
 	return nil
 }
 
+// VideoConfig configures cursor smoothing behavior for video processing.
 type VideoConfig struct {
+	// SmoothingAlpha is the Catmull-Rom spline parameter (0.5 = centripetal, recommended)
 	SmoothingAlpha float64
-	SpringTension  float64
-	SpringFriction float64
-	SpringMass     float64
-	FrameRate      int32
+	// Responsiveness controls how quickly the cursor responds to target changes (0-1)
+	// 0.0 = slow, floaty tracking (~400ms settling)
+	// 1.0 = snappy, immediate tracking (~60ms settling)
+	Responsiveness float64
+	// Smoothness controls motion damping (0-1)
+	// 0.0 = slight overshoot allowed (zeta=0.7)
+	// 1.0 = no overshoot, very smooth (zeta=1.5)
+	Smoothness float64
+	// FrameRate is the video frame rate (e.g., 60)
+	FrameRate int32
+	// LogLevel controls Rust logging verbosity: 0=off, 1=error, 2=warn, 3=info, 4=debug, 5=trace
+	LogLevel int32
 }
 
+// DefaultVideoConfig returns a balanced configuration for smooth cursor tracking.
 func DefaultVideoConfig(frameRate int32) VideoConfig {
 	return VideoConfig{
-		SmoothingAlpha: 0.5,
-		SpringTension:  10.0,
-		SpringFriction: 10.0,
-		SpringMass:     10.0,
+		SmoothingAlpha: 0.5, // Centripetal Catmull-Rom
+		Responsiveness: 0.5, // Balanced response time
+		Smoothness:     0.7, // Mostly smooth with minimal overshoot
 		FrameRate:      frameRate,
+		LogLevel:       3, // Info level
 	}
 }

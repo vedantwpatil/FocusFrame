@@ -19,11 +19,11 @@ typedef struct {
 
 // Video processing configuration
 typedef struct {
-  float smoothing_alpha; // 0.5 for centripetal Catmull-Rom
-  float spring_tension;  // Future: physics-based smoothing
-  float spring_friction; // Future: physics-based smoothing
-  float spring_mass;     // Future: physics-based smoothing
-  int32_t frame_rate;    // Video frame rate (e.g., 60)
+  float smoothing_alpha;  // 0.5 for centripetal Catmull-Rom (recommended)
+  float responsiveness;   // 0.0 = slow/floaty, 1.0 = snappy/immediate (0-1)
+  float smoothness;       // 0.0 = slight overshoot, 1.0 = no overshoot (0-1)
+  int32_t frame_rate;     // Video frame rate (e.g., 60)
+  int32_t log_level;      // 0=off, 1=error, 2=warn, 3=info, 4=debug, 5=trace
 } VideoProcessingConfig;
 
 // Progress callback function pointer type
