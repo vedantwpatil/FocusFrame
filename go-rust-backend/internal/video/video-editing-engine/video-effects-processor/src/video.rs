@@ -381,6 +381,12 @@ fn encode_and_write(
     let mut packet = Packet::empty();
     while encoder.receive_packet(&mut packet).is_ok() {
         packet.set_stream(0);
+
+        // Rescale timestamps from encoder time_base to output stream time_base
+        let encoder_tb = encoder.time_base();
+        let stream_tb = output_ctx.stream(0).map(|s| s.time_base()).unwrap_or(encoder_tb);
+        packet.rescale_ts(encoder_tb, stream_tb);
+
         packet.write_interleaved(output_ctx)?;
     }
     Ok(())
