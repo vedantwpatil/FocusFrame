@@ -23,11 +23,15 @@ func StartMouseTracking(mouseEvents *[]CursorPosition, startingTime time.Time, t
 			default:
 				xMouse, yMouse := robotgo.Location()
 
+				currentTime := time.Now()
+				elapsedTime := currentTime.Sub(startingTime)
+
 				mousePos.X = int16(xMouse)
 				mousePos.Y = int16(yMouse)
-				mousePos.ClickTimeStamp = -1
 
+				mousePos.ClickTimeStamp = elapsedTime
 				*mouseEvents = append(*mouseEvents, mousePos)
+
 				// To capture mouse location only at every frame
 				time.Sleep(1 * time.Second / time.Duration(targetFPS))
 			}

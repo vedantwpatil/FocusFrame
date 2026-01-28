@@ -1,27 +1,20 @@
-use std::fs::{self, File};
-use std::io::{BufWriter, Write};
-use std::path::PathBuf;
+use std::sync::Once;
 
-use crate::types::CPoint;
+static INIT_LOGGER: Once = Once::new();
 
-#[allow(dead_code)]
-pub fn export_points_to_csv(filename: &str, points: &[CPoint]) -> std::io::Result<()> {
-    let file = File::create(filename)?;
-    let mut writer = BufWriter::new(file);
-    writeln!(writer, "x,y,timestamp_ms")?;
-    for p in points {
-        writeln!(writer, "{},{},{}", p.x, p.y, p.timestamp_ms)?;
-    }
-    Ok(())
+pub fn init_logging(level: i32) {
+    INIT_LOGGER.call_once(|| {
+        let env_level = match level {
+            0 => return,
+            1 => "error",
+            2 => "warn",
+            3 => "info",
+            4 => "debug",
+            _ => "trace",
+        };
+
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(env_level))
+            .format_timestamp_millis()
+            .init();
+    });
 }
-
-pub fn ensure_repo_output_dir() -> PathBuf {
-    let base = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let out_dir = base.join("../../../../output");
-    if let Err(e) = fs::create_dir_all(&out_dir) {
-        eprintln!("[debug] failed to create output dir {:?}: {}", out_dir, e);
-    }
-    out_dir
-}
-
-

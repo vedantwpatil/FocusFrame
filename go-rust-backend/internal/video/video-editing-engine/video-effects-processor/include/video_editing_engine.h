@@ -19,19 +19,15 @@ typedef struct {
 
 // Video processing configuration
 typedef struct {
-  float smoothing_alpha;  // 0.5 for centripetal Catmull-Rom (recommended)
-  float responsiveness;   // 0.0 = slow/floaty, 1.0 = snappy/immediate (0-1)
-  float smoothness;       // 0.0 = slight overshoot, 1.0 = no overshoot (0-1)
-  int32_t frame_rate;     // Video frame rate (e.g., 60)
-  int32_t log_level;      // 0=off, 1=error, 2=warn, 3=info, 4=debug, 5=trace
+  float smoothing_alpha; // 0.5 for centripetal Catmull-Rom (recommended)
+  float responsiveness;  // 0.0 = slow/floaty, 1.0 = snappy/immediate (0-1)
+  float smoothness;      // 0.0 = slight overshoot, 1.0 = no overshoot (0-1)
+  int32_t frame_rate;    // Video frame rate (e.g., 60)
+  int32_t log_level;     // 0=off, 1=error, 2=warn, 3=info, 4=debug, 5=trace
 } VideoProcessingConfig;
 
 // Progress callback function pointer type
-typedef void (*ProgressCallback)(float percent);
-
-// ============================================================================
-// Main API - Unified Video Processing
-// ============================================================================
+typedef void (*ProgressCallback)(void *user_data, float percent);
 
 /**
  * Process video with cursor smoothing and overlay in one call.
@@ -47,12 +43,9 @@ int32_t process_video_with_cursor(
     const char *input_video_path, const char *output_video_path,
     const char *cursor_sprite_path, const CPoint *raw_cursor_points,
     size_t raw_cursor_points_len, const VideoProcessingConfig *config,
-    ProgressCallback progress_callback // Can be NULL
+    ProgressCallback progress_callback, // Can be NULL
+    void *user_data                     // ADDED: Context pointer
 );
-
-// ============================================================================
-// Legacy API (for backward compatibility)
-// ============================================================================
 
 /**
  * Smooth cursor path using Catmull-Rom splines.
