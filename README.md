@@ -5,6 +5,7 @@ A high-performance screen recording application that captures screen content and
 ## Architecture
 
 The application uses a hybrid architecture:
+
 - **Backend**: Go + Rust
   - Go handles screen recording and application logic
   - Rust processes video effects and cursor path smoothing
@@ -17,10 +18,6 @@ The application uses a hybrid architecture:
 
 - High-performance screen recording using FFmpeg
 - Mouse tracking and cursor path smoothing
-- Configurable video effects:
-  - Blur effects
-  - Zoom animations
-  - Click tracking
 - Cross-platform support (currently optimized for macOS)
 
 ## Project Structure
@@ -51,6 +48,7 @@ The application uses a hybrid architecture:
 ## Building
 
 1. Install dependencies:
+
    ```bash
    # Backend
    cd go-rust-backend
@@ -62,6 +60,7 @@ The application uses a hybrid architecture:
    ```
 
 2. Run the application:
+
    ```bash
    # Backend
    make run_go
@@ -74,13 +73,16 @@ The application uses a hybrid architecture:
 
 - Cursor hiding for static cursor
 - Audio recording support
+- Configurable video effects:
+  - Blur effects
+  - Zoom animations
+  - Click tracking
+- Adjustable values for strength of video effects
 - Webcam integration
 - GUI for screen and capture area selection
 - Video editing interface
-- Customizable video effects
 
 ## Hardware Requirements
 
 The software is optimized for modern hardware, particularly tested on macOS with M3 Max chip. Performance may vary based on your system specifications.
 
- 
