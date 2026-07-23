@@ -8,7 +8,7 @@ crate-type = ["staticlib"]
 name = "video_effects_processor"
 
 [dependencies]
-ffmpeg-next = "8.0.0"
+ffmpeg-next = "8.1.0"
 image = "0.25"
 log = "0.4"
 thiserror = "2.0.17"

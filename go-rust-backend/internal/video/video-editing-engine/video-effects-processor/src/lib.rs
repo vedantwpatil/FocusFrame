@@ -264,3 +264,93 @@ fn process_video_internal(
     progress.report(1.0);
     Ok(())
 }
+
+// ============================================================================
+// Smoke test: exercises process_video_with_cursor end-to-end (real FFmpeg
+// decode/encode + cursor overlay) against a synthetic clip, via the exact FFI
+// entry point Go calls.
+// ============================================================================
+#[cfg(test)]
+mod smoke_test {
+    use super::*;
+    use std::ffi::CString;
+    use std::path::PathBuf;
+
+    #[test]
+    fn process_video_with_cursor_end_to_end() {
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let cursor_path = manifest_dir.join("../../cursor-sprite.png");
+        let input_path = std::env::temp_dir().join("rtk_smoke_in.mp4");
+        let output_path = std::env::temp_dir().join("rtk_smoke_out.mp4");
+
+        assert!(
+            cursor_path.exists(),
+            "cursor sprite missing at {:?}",
+            cursor_path
+        );
+
+        // Generate a synthetic 2s clip via the `ffmpeg` CLI (already a
+        // required project dependency, see `make check_dependencies`).
+        let status = std::process::Command::new("ffmpeg")
+            .args([
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc=duration=2:size=640x480:rate=30",
+                "-pix_fmt",
+                "yuv420p",
+            ])
+            .arg(&input_path)
+            .output()
+            .expect("failed to spawn ffmpeg; is it installed and on PATH?");
+        assert!(
+            status.status.success(),
+            "ffmpeg fixture generation failed: {}",
+            String::from_utf8_lossy(&status.stderr)
+        );
+
+        let c_input = CString::new(input_path.to_str().unwrap()).unwrap();
+        let c_output = CString::new(output_path.to_str().unwrap()).unwrap();
+        let c_cursor = CString::new(cursor_path.to_str().unwrap()).unwrap();
+
+        // 10 synthetic points spanning the 2s clip, diagonal sweep.
+        let points: Vec<CPoint> = (0..10)
+            .map(|i| CPoint {
+                x: 50.0 + i as f32 * 20.0,
+                y: 50.0 + i as f32 * 15.0,
+                timestamp_ms: i as f64 * 200.0,
+            })
+            .collect();
+
+        let config = VideoProcessingConfig {
+            smoothing_alpha: 0.5,
+            responsiveness: 0.5,
+            smoothness: 0.7,
+            frame_rate: 30,
+            log_level: 1,
+        };
+
+        let result = unsafe {
+            process_video_with_cursor(
+                c_input.as_ptr(),
+                c_output.as_ptr(),
+                c_cursor.as_ptr(),
+                points.as_ptr(),
+                points.len(),
+                &config as *const VideoProcessingConfig,
+                None,
+                std::ptr::null_mut(),
+            )
+        };
+
+        assert_eq!(result, SUCCESS, "process_video_with_cursor returned error code {}", result);
+
+        let metadata = std::fs::metadata(&output_path)
+            .unwrap_or_else(|e| panic!("output file not created at {:?}: {}", output_path, e));
+        assert!(metadata.len() > 0, "output file is empty");
+
+        let _ = std::fs::remove_file(&input_path);
+        let _ = std::fs::remove_file(&output_path);
+    }
+}

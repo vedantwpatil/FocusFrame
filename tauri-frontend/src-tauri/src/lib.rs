@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::process::Command;
 use std::sync::Mutex;
 use tauri::State;
@@ -16,7 +16,7 @@ struct Recording {
 async fn start_recording(name: &str, state: State<'_, RecordingState>) -> Result<(), String> {
     let output_path = format!("output/{}.mp4", name);
 
-    let mut child = Command::new("./go-backend/bin/screen_recorder")
+    let child = Command::new("./go-rust-backend/bin/screen_recorder")
         .arg(&output_path)
         .spawn()
         .map_err(|e| e.to_string())?;

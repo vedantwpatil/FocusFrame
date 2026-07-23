@@ -62,7 +62,7 @@
 
   <div class="recording-controls">
     {#if !isRecording}
-      <form class="start-form" on:submit={startRecording}>
+      <form class="start-form" onsubmit={startRecording}>
         <input 
           type="text" 
           placeholder="Enter recording name..."
@@ -77,7 +77,7 @@
       <div class="recording-status">
         <span class="recording-indicator"></span>
         Recording: {recordingName}
-        <button class="stop-button" on:click={stopRecording}>
+        <button class="stop-button" onclick={stopRecording}>
           Stop Recording
         </button>
       </div>
@@ -94,7 +94,7 @@
           <li class="recording-item">
             <span>{file.name}</span>
             <div class="actions">
-              <button on:click={() => editVideo(file.path)}>Edit</button>
+              <button onclick={() => editVideo(file.path)}>Edit</button>
             </div>
           </li>
         {/each}
