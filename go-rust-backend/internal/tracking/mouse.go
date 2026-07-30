@@ -2,6 +2,7 @@ package tracking
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/go-vgo/robotgo"
@@ -11,6 +12,10 @@ import (
 
 // Captures the mouse position and times when the mouse is clicked
 func StartMouseTracking(mouseEvents *[]CursorPosition, startingTime time.Time, targetFPS int, ctx context.Context) {
+	// Guards mouseEvents: the poll loop below and the click hook run on
+	// separate goroutines and both append to the same slice.
+	var mu sync.Mutex
+
 	// Register mouse location
 	go func() {
 		mousePos := CursorPosition{}
@@ -30,7 +35,10 @@ func StartMouseTracking(mouseEvents *[]CursorPosition, startingTime time.Time, t
 				mousePos.Y = int16(yMouse)
 
 				mousePos.ClickTimeStamp = elapsedTime
+
+				mu.Lock()
 				*mouseEvents = append(*mouseEvents, mousePos)
+				mu.Unlock()
 
 				// To capture mouse location only at every frame
 				time.Sleep(1 * time.Second / time.Duration(targetFPS))
@@ -52,7 +60,10 @@ func StartMouseTracking(mouseEvents *[]CursorPosition, startingTime time.Time, t
 				Y:              e.Y,
 				ClickTimeStamp: elapsedTime,
 			}
+
+			mu.Lock()
 			*mouseEvents = append(*mouseEvents, clickEvent)
+			mu.Unlock()
 		}
 	})
 
