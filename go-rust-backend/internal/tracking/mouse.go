@@ -2,11 +2,11 @@ package tracking
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/go-vgo/robotgo"
 	hook "github.com/robotn/gohook"
+	"github.com/vedantwpatil/Screen-Capture/internal/logger"
 )
 
 // Captures the mouse position and times when the mouse is clicked
@@ -18,7 +18,7 @@ func StartMouseTracking(mouseEvents *[]CursorPosition, startingTime time.Time, t
 			select {
 
 			case <-ctx.Done():
-				fmt.Println("Mouse location tracking stopped...")
+				logger.Info.Println("Mouse location tracking stopped")
 				return
 			default:
 				xMouse, yMouse := robotgo.Location()
@@ -45,8 +45,7 @@ func StartMouseTracking(mouseEvents *[]CursorPosition, startingTime time.Time, t
 			currentTime := time.Now()
 			elapsedTime := currentTime.Sub(startingTime)
 
-			// Log click events
-			fmt.Printf("Click detected at position (%d, %d) with timestamp: %v\n", e.X, e.Y, elapsedTime)
+			logger.Debug.Printf("Click detected at position (%d, %d) with timestamp: %v", e.X, e.Y, elapsedTime)
 
 			clickEvent := CursorPosition{
 				X:              e.X,
@@ -59,9 +58,9 @@ func StartMouseTracking(mouseEvents *[]CursorPosition, startingTime time.Time, t
 
 	evChan := hook.Start()
 
-	fmt.Println("Hook process started. Waiting for events...")
+	logger.Info.Println("Hook process started, waiting for events")
 	// Start processing events. This blocks until hook.End() is called.
 	<-hook.Process(evChan)
 
-	fmt.Println("Hook process stopped.")
+	logger.Info.Println("Hook process stopped")
 }

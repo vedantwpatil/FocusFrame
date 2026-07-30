@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,6 +14,7 @@ import (
 	"time"
 
 	"github.com/vedantwpatil/Screen-Capture/internal/config"
+	"github.com/vedantwpatil/Screen-Capture/internal/logger"
 	"github.com/vedantwpatil/Screen-Capture/internal/tracking"
 )
 
@@ -91,7 +91,7 @@ func (r *Recorder) startRecording() {
 	case "darwin":
 		index, err := findScreenDeviceIndex()
 		if err != nil {
-			log.Printf("Unable to capture the correct device screen: %v", err)
+			logger.Error.Printf("Unable to capture the correct device screen: %v", err)
 			return
 		}
 		cmd = exec.Command("ffmpeg",
@@ -104,13 +104,13 @@ func (r *Recorder) startRecording() {
 			"-y",
 			r.outputPath)
 	default:
-		log.Printf("Unsupported operating system: %s", osType)
+		logger.Error.Printf("Unsupported operating system: %s", osType)
 		return
 	}
 
 	stdinPipe, err := cmd.StdinPipe()
 	if err != nil {
-		log.Printf("Failed to get stdin pipe: %v", err)
+		logger.Error.Printf("Failed to get stdin pipe: %v", err)
 		return
 	}
 	defer stdinPipe.Close()
@@ -118,7 +118,7 @@ func (r *Recorder) startRecording() {
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Start(); err != nil {
-		log.Printf("Failed to start ffmpeg: %v", err)
+		logger.Error.Printf("Failed to start ffmpeg: %v", err)
 		return
 	}
 
@@ -130,7 +130,7 @@ func (r *Recorder) startRecording() {
 	}()
 
 	if err := cmd.Wait(); err != nil {
-		log.Printf("FFmpeg process finished with status: %v", err)
+		logger.Warn.Printf("FFmpeg process finished with status: %v", err)
 	}
 
 	r.mu.Lock()
@@ -193,7 +193,7 @@ func findScreenDeviceIndex() (string, error) {
 			return "", fmt.Errorf("failed to run ffmpeg list_devices command: %v, output: %s", err, outputBytes)
 		}
 
-		fmt.Println("Ffmpeg list_devices exited non-zero, but produced output. Proceeding with parsing.")
+		logger.Warn.Println("ffmpeg list_devices exited non-zero, but produced output; proceeding with parsing")
 	}
 
 	output := string(outputBytes)
@@ -218,7 +218,7 @@ func findScreenDeviceIndex() (string, error) {
 
 			trimmedLine := strings.TrimSpace(line)
 			if strings.Contains(trimmedLine, "Capture screen 0") {
-				fmt.Println("Located main device screen")
+				logger.Debug.Println("Located main device screen")
 				return strconv.Itoa(videoDeviceIndex), nil
 			}
 

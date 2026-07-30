@@ -3,13 +3,13 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/vedantwpatil/Screen-Capture/internal/config"
 	"github.com/vedantwpatil/Screen-Capture/internal/editing"
+	"github.com/vedantwpatil/Screen-Capture/internal/logger"
 	"github.com/vedantwpatil/Screen-Capture/internal/recording"
 )
 
@@ -144,11 +144,11 @@ func (app *Application) cleanup() error {
 
 func (app *Application) handleSignals(sigChan chan os.Signal) {
 	for sig := range sigChan {
-		fmt.Printf("\nReceived signal: %v\n", sig)
+		logger.Info.Printf("Received signal: %v", sig)
 		if app.recorder != nil && app.recorder.IsRecording() {
 			fmt.Println("Stopping recording...")
 			if err := app.recorder.Stop(); err != nil {
-				log.Printf("Error stopping recording: %v", err)
+				logger.Error.Printf("Error stopping recording: %v", err)
 			}
 		} else {
 			fmt.Println("Exiting application...")
@@ -161,6 +161,6 @@ func (app *Application) handleSignals(sigChan chan os.Signal) {
 func main() {
 	app := NewApplication()
 	if err := app.Run(); err != nil {
-		log.Fatalf("Application error: %v", err)
+		logger.Error.Fatalf("Application error: %v", err)
 	}
 }

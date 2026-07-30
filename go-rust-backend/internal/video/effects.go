@@ -16,6 +16,7 @@ import (
 	"runtime/cgo"
 	"unsafe"
 
+	"github.com/vedantwpatil/Screen-Capture/internal/logger"
 	"github.com/vedantwpatil/Screen-Capture/internal/tracking"
 )
 
@@ -106,11 +107,10 @@ func ProcessVideoWithCursor(
 	cCursorPath := C.CString(cursorSpritePath)
 	defer C.free(unsafe.Pointer(cCursorPath))
 
-	// Debug
 	if len(mouseHistory) > 0 {
 		first := mouseHistory[0]
 		ts := float64(first.ClickTimeStamp.Nanoseconds()) / 1e6
-		fmt.Printf("[Go] First Point: X=%d Y=%d TS=%.4f ms\n", first.X, first.Y, ts)
+		logger.Debug.Printf("First cursor point: X=%d Y=%d TS=%.4f ms", first.X, first.Y, ts)
 
 		if ts < 0 {
 			return fmt.Errorf("FATAL: Negative timestamps detected in Go input. Check mouse history capture.")
